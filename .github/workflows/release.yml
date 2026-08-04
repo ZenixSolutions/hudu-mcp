@@ -160,7 +160,12 @@ jobs:
           # this path puts a real one back. Written to the same runner-scoped
           # userconfig setup-node created, never into the checkout.
           npmrc="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
-          printf '//registry.npmjs.org/:_authToken=%s\n' "${NPM_TOKEN}" >> "$npmrc"
+          # Leading newline on purpose. The strip step above can leave the file
+          # without a trailing one, and appending then glues the token onto the end
+          # of `registry=https://registry.npmjs.org/` — producing a registry URL of
+          # `https://registry.npmjs.org///registry.npmjs.org/:_authToken=...` and an
+          # ENEEDAUTH whose own error message quotes the mangled URL back at you.
+          printf '\n//registry.npmjs.org/:_authToken=%s\n' "${NPM_TOKEN}" >> "$npmrc"
           echo "::warning::Publishing with a stored NPM_TOKEN rather than trusted publishing."
           echo "::warning::Once this release lands, add the trusted publisher on the package's npmjs.com settings"
           echo "::warning::(GitHub Actions: ZenixSolutions / hudu-mcp / release.yml) and delete the NPM_TOKEN secret."
