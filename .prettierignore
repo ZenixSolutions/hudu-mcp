@@ -7,6 +7,11 @@ docs/reference/spec-inventory.json
 docs/reference/body-schemas.txt
 CHANGELOG.md
 
+# Written by scripts/contract-recon.mjs from a live instance. Reformatting a
+# generated file would show up as a diff on the next run and hide the change
+# that actually mattered.
+docs/reference/contract-observations.md
+
 # Contributor Covenant 2.1, reproduced verbatim. Prettier would rewrite its list
 # markers and reflow its text, which would make it no longer the upstream text.
 CODE_OF_CONDUCT.md
