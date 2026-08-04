@@ -14,37 +14,38 @@ jobs:
 
     permissions:
       contents: read
-      # Required for npm provenance, which signs the published tarball with a
-      # statement about the workflow and commit that produced it.
+      # Required for npm trusted publishing. GitHub mints a short-lived OIDC
+      # token that npm exchanges for publish rights, so this repository holds no
+      # npm credential at all — there is no standing token to leak, rotate, or
+      # have stolen along with the repository. It also makes provenance
+      # automatic: npm attests which workflow and which commit produced the
+      # tarball, without the --provenance flag.
+      #
+      # This requires a trusted publisher to be configured on npmjs.com for
+      # @zenixsolutions/hudu-mcp, naming this repository and this workflow file.
+      # It cannot be configured from here, and a misconfiguration only surfaces
+      # at publish time — see the failure guidance on the publish step.
       id-token: write
 
     steps:
-      # First step on purpose. A missing token discovered after publishing would
-      # mean a tag exists for a version that is not on npm, so it is checked
-      # before anything else happens.
-      - name: Verify publish credentials are configured
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${NPM_TOKEN}" ]; then
-            echo "::error::The NPM_TOKEN repository secret is not set, so this release cannot publish."
-            echo "::error::Add an npm automation token as the NPM_TOKEN secret, then delete and re-push the tag."
-            exit 1
-          fi
-
-          echo "NPM_TOKEN is present."
-
       - name: Check out the repository
         uses: actions/checkout@v4
 
+      # Node 22.14+ and npm 11.5.1+ are the floor for trusted publishing. The
+      # npm bundled with a given Node release lags, so it is upgraded explicitly
+      # rather than assumed.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           registry-url: https://registry.npmjs.org
+
+      - name: Upgrade npm to a version that supports trusted publishing
+        run: |
+          set -euo pipefail
+          npm install -g npm@latest
+          npm --version
 
       - name: Resolve the version from the tag
         id: version
@@ -80,7 +81,20 @@ jobs:
       - name: Validate
         run: npm run validate
 
-      - name: Publish to npm with provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --provenance --access public
+      # A dry run first, so a packaging mistake fails before anything is
+      # published. A version number on npm can never be reused, so the cheapest
+      # place to catch a bad tarball is here.
+      - name: Inspect the tarball that would be published
+        run: npm publish --dry-run --access public
+
+      - name: Publish to npm
+        id: publish
+        run: npm publish --access public
+
+      - name: Explain a publish failure
+        if: failure() && steps.publish.outcome == 'failure'
+        run: |
+          echo "::error::Publish failed. The usual cause on a first release is that no trusted publisher is configured."
+          echo "::error::On npmjs.com, open the package settings for @zenixsolutions/hudu-mcp (or the org's package settings if it does not exist yet)"
+          echo "::error::and add a GitHub Actions trusted publisher: organization ZenixSolutions, repository hudu-mcp, workflow release.yml."
+          echo "::error::Then delete the tag and re-push it. Nothing was published, so the version number is still free."

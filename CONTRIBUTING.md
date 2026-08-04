@@ -188,8 +188,17 @@ Versioning is [semantic](https://semver.org/), tags are `vX.Y.Z`, and
 Releases are cut by the repository owner: the changelog section for the version
 is completed and dated, the version in `package.json` is bumped, and a `v*` tag
 is pushed. `.github/workflows/release.yml` then validates, builds, checks that
-version's changelog section with `npm run check:changelog`, and publishes to npm
-with provenance.
+version's changelog section with `npm run check:changelog`, dry-runs the
+tarball, and publishes to npm.
+
+Publishing uses **npm trusted publishing** over GitHub's OIDC rather than a
+stored npm token. This repository therefore holds no npm credential: there is
+nothing to rotate and nothing to steal along with the repository, and npm
+attests provenance automatically — which workflow and which commit produced the
+tarball. The trade is that the trusted publisher has to be configured on
+npmjs.com against this repository and this workflow filename, and a
+misconfiguration surfaces only at publish time. The workflow prints what to fix
+if that happens, and nothing is published, so the version number stays free.
 
 Pre-1.0, the tool surface may still change between minor versions. That is
 deliberate and is why the package is at 0.x.
