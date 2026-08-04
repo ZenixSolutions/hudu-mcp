@@ -44,21 +44,37 @@ jobs:
       # Node 22.14+ and npm 11.5.1+ are the floor for trusted publishing. The
       # npm bundled with a given Node release lags, so it is upgraded explicitly
       # rather than assumed.
-      #
-      # No `registry-url`, deliberately. Setting it makes setup-node write an
-      # .npmrc containing `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`,
-      # and on the OIDC path that variable is unset — so npm reads an *empty*
-      # auth token, concludes it already has credentials, never attempts the
-      # OIDC exchange, and sends an unauthenticated PUT. That comes back as
-      # `404 ... could not be found or you do not have permission`, which is
-      # indistinguishable from a missing trusted publisher and cost a release to
-      # diagnose. registry.npmjs.org is npm's default, so nothing needs the
-      # setting; the token path writes its own auth.
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
+          registry-url: https://registry.npmjs.org
+
+      # actions/setup-node#1551. With `registry-url` set, setup-node writes
+      #
+      #     //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}
+      #
+      # into the .npmrc. On the OIDC path that variable is unset, so npm reads an
+      # *empty* auth token, concludes credentials are already configured, and
+      # never starts the OIDC exchange — it sends an unauthenticated PUT, which
+      # the registry answers `404 ... could not be found or you do not have
+      # permission`. That is indistinguishable from a missing trusted publisher,
+      # and it cost two releases to diagnose because the workflow's own failure
+      # guidance pointed at the trusted publisher both times.
+      #
+      # Dropping `registry-url` instead does not work: without it there is no
+      # userconfig at all and npm fails earlier, with ENEEDAUTH, still without
+      # attempting the exchange. The registry entry has to exist and the token
+      # line has to not. Stripping it is the documented workaround.
+      - name: Remove the empty auth token line that blocks OIDC
+        run: |
+          set -euo pipefail
+          npmrc="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          if [ -f "$npmrc" ]; then
+            sed -i '/_authToken/d' "$npmrc"
+            echo "Stripped _authToken from $npmrc so npm will attempt the OIDC exchange."
+          fi
 
       # Pinned to a major, not @latest. Trusted publishing needs 11.5.1+ and the
       # npm bundled with Node 22 is 10.x, so an upgrade is unavoidable — but
@@ -140,11 +156,11 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
-          # setup-node no longer writes an .npmrc (see above), so this path
-          # writes its own. Scoped to the job's temp file, never the checkout,
-          # so it cannot be committed.
-          printf '//registry.npmjs.org/:_authToken=%s\n' "${NPM_TOKEN}" > "${RUNNER_TEMP}/.npmrc"
-          export NPM_CONFIG_USERCONFIG="${RUNNER_TEMP}/.npmrc"
+          # The strip step above removed the token line for the OIDC path, so
+          # this path puts a real one back. Written to the same runner-scoped
+          # userconfig setup-node created, never into the checkout.
+          npmrc="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          printf '//registry.npmjs.org/:_authToken=%s\n' "${NPM_TOKEN}" >> "$npmrc"
           echo "::warning::Publishing with a stored NPM_TOKEN rather than trusted publishing."
           echo "::warning::Once this release lands, add the trusted publisher on the package's npmjs.com settings"
           echo "::warning::(GitHub Actions: ZenixSolutions / hudu-mcp / release.yml) and delete the NPM_TOKEN secret."
