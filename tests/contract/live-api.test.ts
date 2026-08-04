@@ -722,45 +722,31 @@ describe.skipIf(!enabled)('D12: no maximum page_size is published', () => {
 /* C2: collections with no pagination at all                                  */
 /* -------------------------------------------------------------------------- */
 
-describe.skipIf(!enabled)('C2: unpaginated collections ignore page and page_size', () => {
+describe.skipIf(!enabled)('C2/F4: unpaginated collections reject page and page_size', () => {
   for (const path of ['/networks', '/ip_addresses'] as const) {
-    it(`GET ${path} ignores page and page_size`, async (ctx) => {
-      const endpoint = endpointFor(path);
+    it(`GET ${path} rejects page and page_size outright`, async (ctx) => {
       const all = await probe(path);
 
       if (all.status !== 200) {
         skipWith(ctx, `GET ${path} answered HTTP ${all.status} on this instance.`);
       }
 
-      const total = listOf(all, endpoint).length;
-      if (total < 2) {
-        skipWith(
-          ctx,
-          `GET ${path} holds ${total} record(s) on this instance. At least 2 are needed to tell ` +
-            'an honoured page_size from an ignored one.',
-        );
-      }
-
       const paged = await probe(path, { page: 1, page_size: 1 });
 
+      // F4, measured on 2.34.2: Hudu does not ignore a parameter an endpoint
+      // does not document — it answers 400 "page is not a valid filter
+      // parameter" and returns nothing at all. That is why `paginated: false`
+      // on these specs is load-bearing rather than cosmetic, and why passing
+      // arguments through on the assumption the server will drop what it does
+      // not recognise is unsafe against this API.
       expect(
         paged.status,
-        `C2: GET ${path}?page=1&page_size=1 answered HTTP ${paged.status}. The contract ` +
-          'documents neither parameter on this endpoint, and src/tools/ipam.ts therefore sends ' +
-          'neither — but a caller or a proxy might, and rejecting them outright is worth ' +
-          `knowing about. ${DRIFT}`,
-      ).toBe(200);
-
-      const pagedCount = listOf(paged, endpoint).length;
-      expect(
-        pagedCount,
-        `C2: GET ${path}?page=1&page_size=1 returned ${pagedCount} record(s) where the same call ` +
-          `without those parameters returned ${total}. This instance honours pagination the ` +
-          'contract does not document, so src/tools/ipam.ts is withholding `page` and ' +
-          '`page_size` arguments that would work, and its `page_was_full: false` claim is no ' +
+        `F4: GET ${path}?page=1&page_size=1 answered HTTP ${paged.status}, where 400 was ` +
+          'measured on 2.34.2. If this endpoint now accepts pagination, src/tools/ipam.ts is ' +
+          'withholding arguments that would work AND its `page_was_full: false` claim is no ' +
           'longer safe — a caller could be reading page 1 of many and be told it is the whole ' +
-          'set. Re-capture the contract and revisit C2.',
-      ).toBe(total);
+          `set. Re-capture the contract and revisit C2 and F4. ${DRIFT}`,
+      ).toBe(400);
     });
   }
 });
