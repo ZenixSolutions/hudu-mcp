@@ -64,6 +64,35 @@ describe('read-only mode', () => {
     }
   });
 
+  // Regression: withholdReason used to answer `config.readOnly` first, without
+  // asking whether the tool writes at all. hudu_reveal_password is classed
+  // Read, so read-only never withholds it — reporting HUDU_READ_ONLY sent an
+  // operator following docs/security.md step 5 to unset the one variable that
+  // would not change the outcome.
+  it('names the gate that actually withheld a Read-classed tool', () => {
+    const entry = server.built.withheld.find((item) => item.name === 'hudu_reveal_password');
+
+    expect(entry, 'hudu_reveal_password must be withheld with the reveal flag unset').toBeDefined();
+    expect(entry?.reason).toContain('HUDU_ALLOW_PASSWORD_REVEAL');
+    expect(entry?.reason, 'read-only does not withhold a Read tool').not.toContain(
+      'HUDU_READ_ONLY',
+    );
+  });
+
+  it('names a gate that is genuinely closed for every withheld tool', () => {
+    for (const entry of server.built.withheld) {
+      const tool = server.built.tools.find((item) => item.name === entry.name);
+      expect(tool, `${entry.name} is both registered and withheld`).toBeUndefined();
+
+      if (entry.reason.includes('HUDU_READ_ONLY')) expect(server.config.readOnly).toBe(true);
+      if (entry.reason.includes('HUDU_ALLOW_EXPORTS'))
+        expect(server.config.allowExports).toBe(false);
+      if (entry.reason.includes('HUDU_ALLOW_PASSWORD_REVEAL')) {
+        expect(server.config.allowPasswordReveal).toBe(false);
+      }
+    }
+  });
+
   it('refuses a write even if a caller reaches executeTool directly', async () => {
     // Belt and braces: the tool is unregistered, but the gate is re-checked in
     // executeTool so no code path can slip past registration.

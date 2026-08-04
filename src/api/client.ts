@@ -19,7 +19,7 @@ import {
   systemClock,
   TokenBucket,
 } from './rate-limit.js';
-import { redactUrl, registerSecret } from './redact.js';
+import { redact, redactUrl, registerSecret } from './redact.js';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -44,13 +44,21 @@ export interface HuduClientDeps {
 
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 
-/** Trim an upstream error body to something a model can read without drowning. */
+/**
+ * Trim an upstream error body to something a model can read without drowning.
+ *
+ * The parsed body is passed through {@link redact} before anything is taken out
+ * of it. An error body is the one response this client hands to a model without
+ * `stripSecrets` ever running — that happens on the success path in
+ * `executeTool` — so a 4xx or 5xx that echoes the submitted attributes would
+ * otherwise carry `password` or `otp_secret` straight into the transcript.
+ */
 function summariseErrorBody(raw: string): string | undefined {
   const trimmed = raw.trim();
   if (trimmed === '') return undefined;
 
   try {
-    const parsed: unknown = JSON.parse(trimmed);
+    const parsed: unknown = redact(JSON.parse(trimmed));
     if (typeof parsed === 'string') return parsed.slice(0, 600);
     if (parsed && typeof parsed === 'object') {
       const record = parsed as Record<string, unknown>;

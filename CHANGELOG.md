@@ -10,6 +10,36 @@ remove tools.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Credential leak through `response_format: "markdown"` (security).** Tool
+  handlers rendered their Markdown view from the raw API record, before
+  `stripSecrets` ran, and the rendered string was protected only by scrubbing
+  the literal secret value out of it afterwards. That scrub could not match a
+  secret the renderer had reshaped: a `password` nested inside another object is
+  rendered via `JSON.stringify`, so any value containing a quote, a backslash or
+  a newline appeared in escaped form, and any value crossing the 300-character
+  display cut appeared as an unmatchable prefix. Either case returned real
+  credential material with `HUDU_ALLOW_PASSWORD_REVEAL` unset. Markdown is now
+  rendered by a callback that `executeTool` invokes on the already-stripped,
+  already-budgeted payload; the by-value scrub is kept behind it.
+- Markdown output is now derived from the character-budgeted payload, so it can
+  no longer exceed the response budget or disagree with `structuredContent`.
+- `notice` is scrubbed by value like the rest of a tool result. It is prepended
+  to the model-visible text and no strip walked it.
+- Upstream error bodies are redacted before being summarised into an error
+  message. The error path never runs `stripSecrets`, so a 4xx or 5xx echoing the
+  submitted attributes could carry `password` or `otp_secret` into the
+  transcript.
+- `--list-tools` named the wrong gate for tools withheld under `HUDU_READ_ONLY`.
+  `hudu_reveal_password` is classed `Read`, so read-only never withholds it, yet
+  it was reported as withheld by `HUDU_READ_ONLY` instead of by
+  `HUDU_ALLOW_PASSWORD_REVEAL`.
+- Markdown rendering shortens any single value to 300 characters. It now marks
+  the cut and appends a note saying the values are incomplete, instead of
+  returning the first 300 characters of an article body as if it were the whole
+  thing.
+
 ## [0.1.0] - 2026-08-04
 
 Initial release.

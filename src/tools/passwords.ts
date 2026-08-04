@@ -245,7 +245,7 @@ const revealTool = defineTool({
           : `Password record ${id} exists but stores no secret value.`,
       markdown:
         args['response_format'] === ResponseFormat.Markdown
-          ? renderRecordMarkdown('Password', record)
+          ? (data): string => renderRecordMarkdown('Password', data)
           : undefined,
     };
   },

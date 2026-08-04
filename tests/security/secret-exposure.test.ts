@@ -17,7 +17,13 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import type { McpToolResponse } from '../../src/tools/define.js';
+import {
+  defineTool,
+  executeTool,
+  type McpToolResponse,
+  prepareTool,
+} from '../../src/tools/define.js';
+import { OperationClass } from '../../src/security/classification.js';
 import { findSecretFields, WITHHELD, WITHHELD_DISABLED } from '../../src/security/secrets.js';
 import {
   assetPasswordFixture,
@@ -182,6 +188,141 @@ describe('password tools withhold secrets by default', () => {
 
     expect(response.structuredContent?.['password']).toBeNull();
     expect(response.structuredContent?.['otp_secret']).toBeNull();
+  });
+});
+
+/**
+ * Regression: rendering ran on the *raw* record.
+ *
+ * Value-based scrubbing of the rendered Markdown was the first fix for
+ * `response_format: "markdown"`, and it was incomplete. A renderer
+ * JSON-stringifies a nested object and shortens any value over 300 characters,
+ * so the secret could reach the output in a form the literal `split`/`join`
+ * could never match. The rendering is now derived from the stripped payload,
+ * which removes the class rather than another instance of it.
+ */
+describe('markdown rendering cannot outrun the scrubber', () => {
+  it('withholds a nested secret whose value has to be JSON-escaped', async () => {
+    // A quote, a backslash and a newline all survive `JSON.stringify` in an
+    // escaped form, so the rendered text no longer contains the literal value.
+    const awkward = 'Tr0ub4dor"\\&3\nsecond-line';
+    const server = testServer({
+      json: [{ id: 1, name: 'FW', credential: { password: awkward } }],
+    });
+
+    const response = await server.call('hudu_list_assets', { response_format: 'markdown' });
+
+    expect(toolText(response), LEAK_GUARD).not.toContain('Tr0ub4dor');
+    expect(toolText(response)).toContain(WITHHELD_DISABLED);
+  });
+
+  it('withholds a nested secret that falls across the display cut', async () => {
+    // The rendered object is shortened to 300 characters, so a secret straddling
+    // that boundary used to appear as an unmatchable prefix.
+    const server = testServer({
+      json: [
+        {
+          id: 1,
+          name: 'FW',
+          credential: { filler: 'F'.repeat(220), password: `LEAKCANARY${'x'.repeat(200)}` },
+        },
+      ],
+    });
+
+    const response = await server.call('hudu_list_assets', { response_format: 'markdown' });
+
+    expect(toolText(response), LEAK_GUARD).not.toContain('LEAKCANARY');
+  });
+
+  it('withholds a secret longer than the display cut', async () => {
+    const server = testServer({
+      json: { ...assetPasswordFixture(7), password: `LEAKCANARY${'L'.repeat(400)}` },
+    });
+
+    const response = await server.call('hudu_get_password', { id: 7, response_format: 'markdown' });
+
+    expect(toolText(response), LEAK_GUARD).not.toContain('LEAKCANARY');
+    expect(toolText(response)).toContain(WITHHELD_DISABLED);
+  });
+
+  it('renders from the budgeted payload, so Markdown cannot outgrow the budget', async () => {
+    const items = Array.from({ length: 60 }, (_, index) => ({
+      id: index,
+      name: `asset-${index}`,
+      notes: 'N'.repeat(2_000),
+    }));
+    const server = testServer({ json: items });
+
+    const response = await server.call('hudu_list_assets', {
+      response_format: 'markdown',
+      page_size: 60,
+    });
+
+    // The structured payload was cut, and the rendering says so instead of
+    // silently showing a different, longer list than structuredContent holds.
+    expect(response.structuredContent?.['truncated']).toBe(true);
+    expect(toolText(response)).toContain('Response truncated from 60');
+  });
+});
+
+/**
+ * `notice` is prepended to the model-visible text and no strip walks it, so it
+ * is the one field of a `ToolResult` that could carry a value straight out. No
+ * shipped handler puts record data in a notice today; this asserts that the
+ * boundary holds for one that does.
+ */
+describe('notice is scrubbed like the rest of the result', () => {
+  it('redacts a secret a handler put in its notice', async () => {
+    const server = testServer({ json: {} });
+    const prepared = prepareTool(
+      defineTool({
+        name: 'hudu_test_notice',
+        title: 'Notice probe',
+        description: 'Test-only tool that leaks its record into the notice line.',
+        inputSchema: {},
+        operationClass: OperationClass.Read,
+        handler: () =>
+          Promise.resolve({
+            data: { password: SECRET_PASSWORD_VALUE },
+            notice: `Stored value is ${SECRET_PASSWORD_VALUE}.`,
+          }),
+      }),
+    );
+
+    const response = await executeTool(
+      prepared,
+      {},
+      {
+        client: server.client,
+        config: server.config,
+      },
+    );
+
+    expect(toolText(response), LEAK_GUARD).not.toContain(SECRET_PASSWORD_VALUE);
+    expect(findSecretFields(response.structuredContent), LEAK_GUARD).toEqual([]);
+  });
+});
+
+/**
+ * The error path never runs `stripSecrets` — it returns a string, not a record
+ * — so an upstream body that echoes the submitted attributes is a way out.
+ * `summariseErrorBody` redacts the parsed body before anything is taken from it.
+ */
+describe('error bodies cannot carry credentials', () => {
+  it('redacts a secret echoed back in a 422 body', async () => {
+    const server = testServer({
+      status: 422,
+      json: { errors: { asset_password: { password: SECRET_PASSWORD_VALUE } } },
+    });
+
+    const response = await server.call('hudu_create_password', {
+      name: 'Firewall admin',
+      company_id: 3,
+      password: SECRET_PASSWORD_VALUE,
+    });
+
+    expect(response.isError).toBe(true);
+    expect(toolText(response), LEAK_GUARD).not.toContain(SECRET_PASSWORD_VALUE);
   });
 });
 

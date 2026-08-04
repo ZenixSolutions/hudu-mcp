@@ -162,7 +162,7 @@ const cardLookupTool = defineTool({
       data: { count: items.length, items },
       markdown:
         args['response_format'] === ResponseFormat.Markdown
-          ? `# Integration cards\n\n${items.length} card(s) found.`
+          ? (): string => `# Integration cards\n\n${items.length} card(s) found.`
           : undefined,
     };
   },

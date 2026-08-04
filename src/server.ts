@@ -11,6 +11,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { HuduClient, type HuduClientDeps } from './api/client.js';
 import { type Config, loadConfig } from './config.js';
+import { CLASS_REQUIREMENTS } from './security/classification.js';
 import { executeTool, prepareTool, type PreparedTool, shouldRegister } from './tools/define.js';
 import { allToolDefinitions } from './tools/index.js';
 
@@ -33,11 +34,35 @@ export interface BuiltServer {
   readonly withheld: readonly { name: string; reason: string }[];
 }
 
+/**
+ * Why a tool was withheld.
+ *
+ * The order mirrors `shouldRegister` exactly, and every branch is conditioned
+ * on the same predicate that branch uses there. Naming a gate the tool does not
+ * even have is worse than saying nothing: `hudu_reveal_password` is classed
+ * Read, so `HUDU_READ_ONLY` never withholds it, and reporting read-only as the
+ * reason sends an operator to unset the one variable that would not change the
+ * outcome. `docs/security.md` tells them to verify a deployment with
+ * `--list-tools`, so this string is a security control, not a nicety.
+ */
 function withholdReason(tool: ReturnType<typeof prepareTool>, config: Config): string {
-  if (config.readOnly) return 'HUDU_READ_ONLY is set; only Read tools are registered.';
-  if (tool.definition.requiresPasswordReveal) return 'HUDU_ALLOW_PASSWORD_REVEAL is not set.';
-  if (tool.definition.requiresExportFlag) return 'HUDU_ALLOW_EXPORTS is not set.';
-  return 'HUDU_ALLOW_DESTRUCTIVE is not set.';
+  const requirements = CLASS_REQUIREMENTS[tool.operationClass];
+
+  if (requirements.writes && config.readOnly) {
+    return 'HUDU_READ_ONLY is set; only Read tools are registered.';
+  }
+  if (requirements.destructiveFlag && !config.allowDestructive) {
+    return 'HUDU_ALLOW_DESTRUCTIVE is not set.';
+  }
+  if (tool.definition.requiresExportFlag === true && !config.allowExports) {
+    return 'HUDU_ALLOW_EXPORTS is not set.';
+  }
+  if (tool.definition.requiresPasswordReveal === true && !config.allowPasswordReveal) {
+    return 'HUDU_ALLOW_PASSWORD_REVEAL is not set.';
+  }
+
+  /* c8 ignore next -- unreachable: shouldRegister withholds for one of the above */
+  return 'Withheld by the current capability configuration.';
 }
 
 export function buildServer(options: BuildServerOptions = {}): BuiltServer {

@@ -192,7 +192,7 @@ model lists `password` and `otp_secret` among its **required** properties and
 `GET /asset_passwords` returns an array of that model (A1), so one unfiltered
 call would return every credential and every TOTP seed the key can see. Those
 two fields are stripped from every tool result centrally, in `executeTool`, and
-scrubbed by value out of rendered Markdown as well. `hudu_reveal_password` is
+withheld from rendered Markdown too, which is built from the stripped payload. `hudu_reveal_password` is
 the single exception: it needs the environment flag, an explicit `confirm:
 true`, and one specific id. It is classed `Read` because it does not modify
 Hudu, so it stays available in read-only mode when the flag is set. Password

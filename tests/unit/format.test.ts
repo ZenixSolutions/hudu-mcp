@@ -22,6 +22,8 @@ import {
   projectFields,
   renderListMarkdown,
   renderRecordMarkdown,
+  VALUE_TRUNCATION_MARKER,
+  VALUE_TRUNCATION_NOTE,
   unpaginatedInfo,
 } from '../../src/presentation/format.js';
 
@@ -281,6 +283,37 @@ describe('markdown rendering', () => {
       truncation_note: 'cut short',
     };
     expect(renderListMarkdown('Companies', envelope)).toContain('cut short');
+  });
+
+  // Regression: Markdown shortened every value to 300 characters and said
+  // nothing about it, so `hudu_get_article` in Markdown returned the first
+  // three hundred characters of a runbook and read as the whole thing. Same
+  // failure Invariant 5 forbids for pagination.
+  it('names a value it cut short, and says so at the end', () => {
+    const markdown = renderRecordMarkdown('Article', {
+      id: 1,
+      content: `START${'z'.repeat(400)}END`,
+    });
+
+    expect(markdown).toContain(VALUE_TRUNCATION_MARKER);
+    expect(markdown).toContain(VALUE_TRUNCATION_NOTE);
+    expect(markdown, 'the cut value must not read as complete').not.toContain('END');
+  });
+
+  it('says nothing about truncation when nothing was cut', () => {
+    const markdown = renderRecordMarkdown('Article', { id: 1, content: 'short' });
+
+    expect(markdown).not.toContain(VALUE_TRUNCATION_MARKER);
+    expect(markdown).not.toContain(VALUE_TRUNCATION_NOTE);
+  });
+
+  it('discloses a cut inside a list rendering too', () => {
+    const envelope: ListEnvelope<Record<string, unknown>> = {
+      ...pageInfo(1, 25, 1),
+      items: [{ id: 1, name: 'Acme', notes: 'n'.repeat(400) }],
+    };
+
+    expect(renderListMarkdown('Companies', envelope)).toContain(VALUE_TRUNCATION_NOTE);
   });
 
   it('renders a single record and skips empty fields', () => {

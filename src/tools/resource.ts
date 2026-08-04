@@ -179,7 +179,12 @@ export function buildListTool(spec: ResourceSpec): ToolDefinition {
         data: envelope,
         markdown:
           args['response_format'] === ResponseFormat.Markdown
-            ? renderListMarkdown(spec.titlePlural, envelope, spec.titleField ?? 'name')
+            ? (data): string =>
+                renderListMarkdown(
+                  spec.titlePlural,
+                  data as ListEnvelope<Record<string, unknown>>,
+                  spec.titleField ?? 'name',
+                )
             : undefined,
       };
     },
@@ -205,7 +210,7 @@ export function buildGetTool(spec: ResourceSpec): ToolDefinition {
         data: record ?? null,
         markdown:
           args['response_format'] === ResponseFormat.Markdown
-            ? renderRecordMarkdown(spec.title, record)
+            ? (data): string => renderRecordMarkdown(spec.title, data)
             : undefined,
       };
     },

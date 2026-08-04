@@ -42,8 +42,17 @@ export interface ToolContext {
 export interface ToolResult {
   /** Structured payload. Secrets are stripped from this automatically. */
   readonly data: unknown;
-  /** Optional human-facing rendering. Falls back to pretty JSON. */
-  readonly markdown?: string | undefined;
+  /**
+   * Optional human-facing rendering. Falls back to pretty JSON.
+   *
+   * A *function*, not a string, and deliberately so. A handler that rendered
+   * eagerly would render from its own raw API record — before `stripSecrets`
+   * and before the character budget — so the rendered text became a second,
+   * unprotected path out of the server. `executeTool` calls this with the
+   * already-stripped, already-budgeted payload instead, which is the only
+   * shape a rendering may legally be derived from.
+   */
+  readonly markdown?: ((data: unknown) => string) | undefined;
   /** Short line prepended to the response, e.g. an impact statement. */
   readonly notice?: string | undefined;
 }
@@ -272,17 +281,29 @@ export async function executeTool(
         ? applyCharacterBudget(safeData as never)
         : safeData;
 
-    // A handler renders its Markdown view from the *raw* record, before
-    // stripping has run, so `result.markdown` bypasses `stripSecrets` entirely.
-    // Scrub the rendered string by value as well, or `response_format:
-    // "markdown"` becomes an ungated password reveal.
+    // Render from `budgeted`, never from `result.data`. Rendering from the raw
+    // record made `response_format: "markdown"` an ungated password reveal:
+    // a renderer JSON-stringifies nested objects and shortens long values, so a
+    // secret could reach the output in a form no by-value scrub could match —
+    // `{"password":"a\"b"}` after JSON escaping, or the first 300 characters of
+    // a long one. Rendering after stripping removes the class outright.
+    const rendered = result.markdown?.(budgeted);
+
+    // Value scrubbing stays as a second layer. It is cheap, and it still covers
+    // a renderer that reaches something the key-based strip did not.
     const markdown =
-      result.markdown === undefined || definition.requiresPasswordReveal
-        ? result.markdown
-        : redactSecretsInText(result.markdown, collectSecretValues(result.data), placeholder);
+      rendered === undefined || definition.requiresPasswordReveal
+        ? rendered
+        : redactSecretsInText(rendered, collectSecretValues(result.data), placeholder);
 
     const text = markdown ?? JSON.stringify(budgeted, null, 2);
-    const withNotice = result.notice ? `${result.notice}\n\n${text}` : text;
+    // `notice` is prepended to the model-visible text and is the one part of a
+    // result that no strip walks, so it is scrubbed by value too.
+    const notice =
+      result.notice === undefined || definition.requiresPasswordReveal
+        ? result.notice
+        : redactSecretsInText(result.notice, collectSecretValues(result.data), placeholder);
+    const withNotice = notice ? `${notice}\n\n${text}` : text;
 
     return {
       content: [{ type: 'text', text: withNotice }],

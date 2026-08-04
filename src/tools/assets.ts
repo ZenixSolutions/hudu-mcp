@@ -233,7 +233,8 @@ const listCompanyAssetsTool = defineTool({
       data: envelope,
       markdown:
         args['response_format'] === ResponseFormat.Markdown
-          ? renderListMarkdown('Assets', envelope, 'name')
+          ? (data): string =>
+              renderListMarkdown('Assets', data as ListEnvelope<Record<string, unknown>>, 'name')
           : undefined,
     };
   },
@@ -263,7 +264,7 @@ const getAssetTool = defineTool({
       data: record ?? null,
       markdown:
         args['response_format'] === ResponseFormat.Markdown
-          ? renderRecordMarkdown('Asset', record)
+          ? (data): string => renderRecordMarkdown('Asset', data)
           : undefined,
     };
   },

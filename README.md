@@ -190,7 +190,8 @@ properties, and `GET /asset_passwords` returns an array of that model
 returns every credential and every TOTP seed the key can see. This server strips
 those two fields recursively from every tool result, centrally, in
 `executeTool` — leaving a placeholder so a model can tell a value exists — and
-scrubs them by value out of rendered Markdown as well. The only exception is
+renders Markdown from the stripped payload rather than the raw record, and
+scrubs the rendered text by value behind that. The only exception is
 `hudu_reveal_password`, which needs `HUDU_ALLOW_PASSWORD_REVEAL=1`, an explicit
 `confirm: true`, and one specific record id. There is no bulk reveal.
 

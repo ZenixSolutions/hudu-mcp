@@ -147,6 +147,32 @@ export function projectFields<T>(items: readonly T[], fields: readonly string[] 
   });
 }
 
+/** Longest single value rendered into Markdown before it is cut. */
+export const VALUE_DISPLAY_LIMIT = 300;
+
+/**
+ * Marker left where a value was cut short.
+ *
+ * A bare ellipsis is not enough. Markdown rendering shortens *every* value to
+ * {@link VALUE_DISPLAY_LIMIT} characters, so `hudu_get_article` in Markdown
+ * returns the first three hundred characters of a runbook and nothing says the
+ * rest exists. That is the same failure Invariant 5 forbids for pagination —
+ * a partial answer that reads as a complete one — so the cut is named, and
+ * {@link VALUE_TRUNCATION_NOTE} is appended whenever one happened.
+ */
+export const VALUE_TRUNCATION_MARKER = '…[value truncated]';
+
+export const VALUE_TRUNCATION_NOTE =
+  `One or more values above end in ${VALUE_TRUNCATION_MARKER}: Markdown rendering shortens any ` +
+  `single value to ${VALUE_DISPLAY_LIMIT} characters. Those values are incomplete. Re-request ` +
+  'with response_format: "json" to read them in full, and do not summarise a truncated value ' +
+  'as if it were the whole thing.';
+
+const withTruncationNote = (lines: readonly string[]): string => {
+  const body = lines.join('\n');
+  return body.includes(VALUE_TRUNCATION_MARKER) ? `${body}\n\n${VALUE_TRUNCATION_NOTE}` : body;
+};
+
 const humanise = (key: string): string =>
   key.replace(/_/g, ' ').replace(/^./, (character) => character.toUpperCase());
 
@@ -160,13 +186,18 @@ const humanise = (key: string): string =>
  */
 export const toDisplayText = (value: unknown): string => {
   if (value === null || value === undefined) return '—';
-  if (typeof value === 'string') return value.length > 300 ? `${value.slice(0, 300)}…` : value;
+  if (typeof value === 'string') return shorten(value);
   if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
     return String(value);
   }
-  if (typeof value === 'object') return JSON.stringify(value).slice(0, 300);
+  if (typeof value === 'object') return shorten(JSON.stringify(value));
   return `[${typeof value}]`;
 };
+
+const shorten = (text: string): string =>
+  text.length > VALUE_DISPLAY_LIMIT
+    ? `${text.slice(0, VALUE_DISPLAY_LIMIT)}${VALUE_TRUNCATION_MARKER}`
+    : text;
 
 const scalarToText = toDisplayText;
 
@@ -186,7 +217,7 @@ export function renderListMarkdown<T>(
     lines.push('_No records matched._');
     lines.push('');
     lines.push(envelope.pagination_note);
-    return lines.join('\n');
+    return withTruncationNote(lines);
   }
 
   for (const item of envelope.items) {
@@ -207,18 +238,18 @@ export function renderListMarkdown<T>(
 
   lines.push(envelope.pagination_note);
   if (envelope.truncation_note) lines.push('', envelope.truncation_note);
-  return lines.join('\n');
+  return withTruncationNote(lines);
 }
 
 /** Render a single record as Markdown. */
 export function renderRecordMarkdown(title: string, record: unknown): string {
-  if (!isPlainObject(record)) return `# ${title}\n\n${scalarToText(record)}`;
+  if (!isPlainObject(record)) return withTruncationNote([`# ${title}`, '', scalarToText(record)]);
   const lines: string[] = [`# ${title}`, ''];
   for (const [key, value] of Object.entries(record)) {
     if (value === null || value === undefined || value === '') continue;
     lines.push(`- **${humanise(key)}**: ${scalarToText(value)}`);
   }
-  return lines.join('\n');
+  return withTruncationNote(lines);
 }
 
 export { DEFAULT_PAGE_SIZE };
