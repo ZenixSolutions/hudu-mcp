@@ -192,7 +192,12 @@ version's changelog section with `npm run check:changelog`, dry-runs the
 tarball, and publishes to npm.
 
 Publishing uses **npm trusted publishing** over GitHub's OIDC rather than a
-stored npm token. This repository therefore holds no npm credential: there is
+stored npm token — after the first release. A trusted publisher is configured in
+a package's settings on npmjs.com, and a package that has never been published
+has no settings page, so the very first publish of a new name needs a granular
+`NPM_TOKEN` secret. The workflow takes that path when the secret exists and the
+OIDC path when it does not; delete the secret once the package page exists and
+the trusted publisher is configured. This repository therefore holds no npm credential: there is
 nothing to rotate and nothing to steal along with the repository, and npm
 attests provenance automatically — which workflow and which commit produced the
 tarball. The trade is that the trusted publisher has to be configured on
