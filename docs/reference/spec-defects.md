@@ -301,21 +301,25 @@ document is still document-derived. `/expirations`, `/uploads`, `/websites`,
 `/magic_dash`, `/activity_logs`, `/ip_addresses`, `/rack_storages` and
 `/rack_storage_items` returned bare arrays, matching what the code assumed.
 
-### F1. Ten list endpoints wrap their array; the contract documents none of them
+### F1. Eleven list endpoints wrap their array; six were undeclared here
 
-| Endpoint                         | Envelope key    | Was            |
-| -------------------------------- | --------------- | -------------- |
-| `/companies`                     | `companies`     | **undeclared** |
-| `/asset_layouts`                 | `asset_layouts` | **undeclared** |
-| `/articles`                      | `articles`      | **undeclared** |
-| `/folders`                       | `folders`       | **undeclared** |
-| `/relations`                     | `relations`     | **undeclared** |
-| `/users`                         | `users`         | **undeclared** |
-| `/assets`                        | `assets`        | correct        |
-| `/companies/{company_id}/assets` | `assets`        | correct        |
-| `/procedures`                    | `procedures`    | correct        |
-| `/public_photos`                 | `public_photos` | correct        |
-| `/matchers`                      | `matchers`      | correct        |
+The "documented?" column is about Hudu's OpenAPI file; the "declared?" column
+is about this client. They are different questions and the first version of this
+table conflated them.
+
+| Endpoint                         | Envelope key    | Documented?          | Declared here? |
+| -------------------------------- | --------------- | -------------------- | -------------- |
+| `/companies`                     | `companies`     | no — bare array      | **no**         |
+| `/asset_layouts`                 | `asset_layouts` | no — a single object | **no**         |
+| `/articles`                      | `articles`      | no — bare array      | **no**         |
+| `/folders`                       | `folders`       | no — bare array      | **no**         |
+| `/relations`                     | `relations`     | no — bare array      | **no**         |
+| `/users`                         | `users`         | no — bare array      | **no**         |
+| `/assets`                        | `assets`        | yes                  | yes            |
+| `/companies/{company_id}/assets` | `assets`        | yes                  | yes            |
+| `/procedures`                    | `procedures`    | yes                  | yes            |
+| `/public_photos`                 | `public_photos` | yes                  | yes            |
+| `/matchers`                      | `matchers`      | yes                  | yes            |
 
 Six shipped list tools expected a bare array and declared no `listKey`.
 
