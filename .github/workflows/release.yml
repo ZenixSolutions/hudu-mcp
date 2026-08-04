@@ -12,6 +12,16 @@ jobs:
     name: Validate and publish
     runs-on: ubuntu-latest
 
+    # `secrets` is not an allowed context in a step-level `if` — the permitted
+    # list is github, needs, strategy, matrix, job, runner, env, vars, steps and
+    # inputs. Lifting the secret into job-level env is the supported way to
+    # branch on whether it is set, because `env` *is* allowed there. Referencing
+    # secrets directly in an `if` does not fail the step; it fails the whole
+    # workflow file to parse, which reports as "this run likely failed because
+    # of a workflow file issue" with no logs at all.
+    env:
+      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+
     permissions:
       contents: read
       # Required for npm trusted publishing. GitHub mints a short-lived OIDC
@@ -111,12 +121,12 @@ jobs:
       # nothing at all.
       - name: Publish to npm (trusted publishing)
         id: publish_oidc
-        if: ${{ !secrets.NPM_TOKEN }}
+        if: env.HAS_NPM_TOKEN != 'true'
         run: npm publish --access public
 
       - name: Publish to npm (token, for a first release only)
         id: publish_token
-        if: ${{ secrets.NPM_TOKEN }}
+        if: env.HAS_NPM_TOKEN == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
