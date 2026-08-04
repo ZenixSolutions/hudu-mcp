@@ -35,6 +35,17 @@ const ConfigSchema = z.object({
   readOnly: z.boolean(),
   allowDestructive: z.boolean(),
   allowPasswordReveal: z.boolean(),
+  /**
+   * Deliberately independent of {@link allowPasswordReveal}.
+   *
+   * Reading a stored credential and writing one are different powers, and
+   * collapsing them would force an operator who only wants an agent to
+   * *document* a new credential to also grant it the ability to read every
+   * existing one. Writing without reading is a legitimate posture; so is
+   * reading without writing. Neither implies the other, so neither gate opens
+   * the other.
+   */
+  allowPasswordWrite: z.boolean(),
   allowExports: z.boolean(),
   requestTimeoutMs: z.number().int().positive().max(600_000),
   maxConcurrency: z.number().int().positive().max(32),
@@ -82,6 +93,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, version = '0.0.
     readOnly: boolFromEnv(env['HUDU_READ_ONLY']),
     allowDestructive: boolFromEnv(env['HUDU_ALLOW_DESTRUCTIVE']),
     allowPasswordReveal: boolFromEnv(env['HUDU_ALLOW_PASSWORD_REVEAL']),
+    allowPasswordWrite: boolFromEnv(env['HUDU_ALLOW_PASSWORD_WRITE']),
     allowExports: boolFromEnv(env['HUDU_ALLOW_EXPORTS']),
     requestTimeoutMs: intFromEnv(env['HUDU_REQUEST_TIMEOUT_MS'], 30_000),
     maxConcurrency: intFromEnv(env['HUDU_MAX_CONCURRENCY'], 4),

@@ -19,7 +19,13 @@
  *      needs `HUDU_ALLOW_PASSWORD_REVEAL=1` on the server *and* an explicit
  *      `confirm: true` *and* a single specific id. There is no bulk reveal, and
  *      there deliberately never will be.
- *   3. The cheapest control is upstream of all of this: a Hudu API key created
+ *   3. Writing to a password record — creating, updating, archiving or deleting
+ *      one — needs `HUDU_ALLOW_PASSWORD_WRITE=1`, which is a separate gate from
+ *      the reveal flag and defaults off like every other. Overwriting the only
+ *      copy of a working credential is a real loss even though no secret leaves
+ *      the building, so the write direction is gated on its own terms rather
+ *      than being left open because it is not a read.
+ *   4. The cheapest control is upstream of all of this: a Hudu API key created
  *      without password access cannot read these endpoints at all. The README
  *      recommends exactly that for anyone who does not need them.
  */
@@ -33,6 +39,52 @@ import { OperationClass } from '../security/classification.js';
 import { findSecretFields } from '../security/secrets.js';
 import { defineTool, responseFormatArg, type ToolDefinition } from './define.js';
 import { buildResourceTools, type ResourceSpec } from './resource.js';
+
+/**
+ * How `name` and `search` differ, which the captured contract never says.
+ *
+ * Measured on Hudu 2.34.2 against `GET /assets`: `name: "UDM Pro"` matched the
+ * whole name case-insensitively and excluded "UDM Pro Max", while `search:
+ * "UDM"` matched as a substring and returned both. The measurement is from the
+ * asset list rather than `/asset_passwords`, so it is offered as the behaviour
+ * to expect rather than as a fact established here.
+ *
+ * It matters more on this resource than on most. Credential names are written
+ * by hand and are not systematic ("FW admin", "Firewall — admin"), the one
+ * field that would classify a record instead ({@link PASSWORD_TYPE_OBSERVATION})
+ * is empty on this instance, and the consequence of a search that quietly
+ * misses is a caller reporting that no credential is documented when one is.
+ */
+const NAME_MATCHING =
+  'Matching, observed on Hudu 2.34.2 and documented nowhere: a `name` filter matched the whole ' +
+  'value case-insensitively rather than as a substring — on the asset list, `name: "UDM Pro"` ' +
+  'excluded "UDM Pro Max". That is one instance rather than a published contract, so treat it ' +
+  'as a working assumption: an empty result here means nothing matched the name in full, and ' +
+  'never that the company has no credential documented. Widen with `search` before saying so.';
+
+const SEARCH_MATCHING =
+  'Matching, observed on Hudu 2.34.2 and documented nowhere: `search` matched as a substring ' +
+  'where `name` matched the whole value — on the asset list, `search: "UDM"` returned both "UDM ' +
+  'Pro" and "UDM Pro Max", while `name: "UDM Pro"` returned only the first. That is one ' +
+  'instance rather than a published contract, but it is why this is the filter to use when you ' +
+  'are looking for a credential by a fragment of how someone might have named it.';
+
+/**
+ * `password_type` is empty on every record this instance holds.
+ *
+ * The field looks like the answer to "which of these credentials are network
+ * device logins?" — it is the only classification a password record carries —
+ * and on Hudu 2.34.2 it came back `null` on every record, so it classifies
+ * nothing. A reviewer looking for firewall credentials had to guess at search
+ * terms instead. One instance rather than a published contract: the API neither
+ * documents a vocabulary for it nor says it is populated.
+ */
+const PASSWORD_TYPE_OBSERVATION =
+  'Observed on a live Hudu 2.34.2 instance: `password_type` was null on every password record, ' +
+  'so nothing on that instance classifies a credential by kind and this field cannot be used to ' +
+  'find, say, network device logins — searching `name` and `description` text is the only route ' +
+  'there. That is one instance rather than a published contract, and it is a reason to fill the ' +
+  'field in consistently rather than a reason to ignore it.';
 
 const SECRET_HANDLING_WARNING =
   'You are writing credential material into Hudu. Never invent a password or an OTP secret ' +
@@ -86,7 +138,7 @@ const writableFields = {
     .optional()
     .describe(
       'Free-text category, e.g. "Local admin". Hudu publishes no list of legal values; read an ' +
-        'existing record to see what this instance uses.',
+        `existing record to see what this instance uses. ${PASSWORD_TYPE_OBSERVATION}`,
     ),
   password_folder_id: z
     .number()
@@ -120,15 +172,23 @@ export const assetPasswordsSpec: ResourceSpec = {
     'to a specific asset or website. Hudu calls these "AssetPassword" in the API and simply ' +
     '"Passwords" in its interface.',
   listNotes:
-    'The secret value and any stored OTP seed are withheld from these results. Everything else ' +
-    '— name, username, URL, company, folder, timestamps — is returned, which answers most ' +
-    'questions ("does this client have a firewall admin credential documented, and when was it ' +
-    'last rotated?") without exposing anything. To read an actual secret you need ' +
+    'You will never see a secret here. `password` and `otp_secret` come back as null on every ' +
+    'record. Where a record genuinely stores a value, the null is accompanied by ' +
+    '`password_redacted: true` (or `otp_secret_redacted: true`) — that flag is how you tell ' +
+    '"there is a credential on file, withheld from you" apart from a plain null, which means ' +
+    'the record documents an account with nothing stored against it. Never treat a redacted ' +
+    'field as an empty password.\n\n' +
+    'Everything else — name, username, URL, company, folder, timestamps — is returned, which ' +
+    'answers most questions ("does this client have a firewall admin credential documented, and ' +
+    'when was it last rotated?") without exposing anything. To read an actual secret you need ' +
     'hudu_reveal_password, one record at a time, and the server operator must have enabled it.',
   paginated: true,
   filters: {
-    search: z.string().optional().describe('Broad text search across password records.'),
-    name: z.string().optional().describe('Match against the credential name.'),
+    search: z
+      .string()
+      .optional()
+      .describe(`Broad text search across password records. ${SEARCH_MATCHING}`),
+    name: z.string().optional().describe(`Match against the credential name. ${NAME_MATCHING}`),
     company_id: z.number().int().positive().optional().describe('Restrict to one company.'),
     archived: z
       .boolean()
@@ -152,6 +212,12 @@ export const assetPasswordsSpec: ResourceSpec = {
       company_id: writableFields.company_id.optional(),
     },
   },
+  // Gates every write tool this spec generates — create, update, archive and
+  // delete — behind HUDU_ALLOW_PASSWORD_WRITE. Until 0.2.0 nothing gated them
+  // at all, so a key that could not read a credential could still overwrite or
+  // archive one: the destructive direction open while the read direction was
+  // locked. Reads keep their own posture; stripping already covers the values.
+  storesSecrets: true,
   deletable: true,
   deleteImpact:
     'Permanently removes the credential record, including the stored secret and OTP seed. If ' +
@@ -176,9 +242,12 @@ export const passwordFoldersSpec: ResourceSpec = {
     'delete endpoint for them. Folders are managed in the Hudu web interface.',
   paginated: true,
   filters: {
-    name: z.string().optional(),
+    name: z.string().optional().describe(`Match against the folder name. ${NAME_MATCHING}`),
     company_id: z.number().int().positive().optional(),
-    search: z.string().optional(),
+    search: z
+      .string()
+      .optional()
+      .describe(`Broad text search across password folders. ${SEARCH_MATCHING}`),
   },
 };
 

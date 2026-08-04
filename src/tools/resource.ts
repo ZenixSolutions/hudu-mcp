@@ -26,6 +26,7 @@ import {
   renderRecordMarkdown,
   ResponseFormat,
   unpaginatedInfo,
+  withCompletenessCaveat,
 } from '../presentation/format.js';
 import { OperationClass } from '../security/classification.js';
 import { defineTool, responseFormatArg, type ToolDefinition, type ToolResult } from './define.js';
@@ -65,13 +66,20 @@ export const fieldsArg = {
  * A resource description, from which every tool for that resource is generated.
  *
  * One rule governs every field that becomes a query parameter: **send only
- * parameters the endpoint documents.** Hudu rejects an unrecognised query
- * parameter outright rather than ignoring it — `GET /networks?page=1` answers
- * `400 {"error":"page is not a valid filter parameter."}` on 2.34.2
- * (docs/reference/spec-defects.md F4) — so one stray parameter fails the whole
- * call rather than being dropped. "Pass it through and let the server ignore
- * it" is not a safe pattern here, which is why `paginated: false` means this
- * factory sends no `page` at all rather than sending one and hoping.
+ * parameters the endpoint documents.** How Hudu treats an undocumented one is
+ * per-endpoint and there is no safe default to assume (docs/reference/spec-
+ * defects.md F4). `GET /networks?zzz_bogus=1` answers `400 {"error":"zzz_bogus
+ * is not a valid filter parameter."}`, so one stray parameter there fails the
+ * whole call. `GET /companies?zzz_bogus=1` answers `200` and ignores it, so a
+ * stray parameter there fails nothing and does nothing — which is the worse of
+ * the two, because a filter that is silently discarded looks like a filter that
+ * worked. Both were measured on 2.34.2.
+ *
+ * Neither behaviour makes "pass it through and let the server sort it out" a
+ * safe pattern: one costs the call, the other costs the answer. That is why
+ * `paginated: false` means this factory sends no `page` at all rather than
+ * sending one and hoping, and why an undocumented filter is not offered as an
+ * argument even where the endpoint would tolerate it.
  */
 export interface ResourceSpec {
   /** Resource key used in tool names, snake_case plural, e.g. `companies`. */
@@ -104,6 +112,22 @@ export interface ResourceSpec {
   readonly summary: string;
   /** Extra guidance appended to the list tool description. */
   readonly listNotes?: string;
+  /**
+   * A standing limit on what the list can contain at all, independent of paging.
+   *
+   * `pagination_note` answers "is there another page?"; for a few resources that
+   * is not the whole question. `GET /companies` omits archived companies and
+   * documents no parameter to include them, so a note saying "this is the last
+   * page for the current filters" is true about the paging and misleading about
+   * the universe. Set this and the caveat travels on every result — appended to
+   * `pagination_note`, which is the field a caller reads before deciding a list
+   * is complete, and carried as `completeness_caveat` so that regenerating the
+   * note under truncation cannot drop it.
+   *
+   * State it as a limit of the endpoint, not of the request: it is emitted
+   * whatever filters were sent.
+   */
+  readonly completenessCaveat?: string;
   /** Filter arguments accepted by the list tool. */
   readonly filters?: z.ZodRawShape;
   /** Whether the list endpoint documents `page` and `page_size`. */
@@ -127,6 +151,15 @@ export interface ResourceSpec {
   readonly deleteImpact?: string;
   /** Whether `PUT {itemPath}/archive` and `/unarchive` exist. */
   readonly archivable?: boolean;
+  /**
+   * Records of this resource store credential material.
+   *
+   * Every *write* tool generated for it — create, update, archive and delete —
+   * is gated behind `HUDU_ALLOW_PASSWORD_WRITE` in addition to whatever its
+   * operation class already requires. Reads are unaffected: metadata about a
+   * credential is not the credential, and stripping already handles the values.
+   */
+  readonly storesSecrets?: boolean;
 }
 
 const itemPathOf = (spec: ResourceSpec): string => spec.itemPath ?? `${spec.basePath}/{id}`;
@@ -190,12 +223,22 @@ export function buildListTool(spec: ResourceSpec): ToolDefinition {
       );
       const items = projectFields(raw, args['fields'] as string[] | undefined);
 
-      const envelope: ListEnvelope<Record<string, unknown>> = {
-        ...(spec.paginated
-          ? pageInfo(page, pageSize, items.length)
-          : unpaginatedInfo(items.length)),
-        items,
-      };
+      const meta = spec.paginated
+        ? // When the endpoint documents no `page_size`, the size reported back is
+          // the number of records the page actually held — this client asked for
+          // nothing, so echoing a requested size it never sent would be a fiction.
+          // The flag also reaches the truncation prose, which must not advise
+          // lowering a parameter the endpoint rejects.
+          pageInfo(page, pageSizeSupported ? pageSize : items.length, items.length, {
+            pageSizeSupported,
+          })
+        : unpaginatedInfo(items.length);
+
+      const base: ListEnvelope<Record<string, unknown>> = { ...meta, items };
+      const envelope =
+        spec.completenessCaveat === undefined
+          ? base
+          : withCompletenessCaveat(base, spec.completenessCaveat);
 
       return {
         data: envelope,
@@ -248,8 +291,13 @@ export function buildGetTool(spec: ResourceSpec): ToolDefinition {
       'A missing record does not always fail: Hudu is inconsistent here, and some endpoints ' +
       'answer 200 with an empty body for an id that does not exist. When that happens this ' +
       'tool returns `found: false` with an explanatory notice instead of a record. Treat that ' +
-      'as "no such record", never as a record whose fields happen to be blank.',
-    inputSchema: { ...idArg(spec), ...responseFormatArg },
+      'as "no such record", never as a record whose fields happen to be blank.\n\n' +
+      '`fields` narrows the record to the top-level keys you name, exactly as it does on the ' +
+      'list tools. It is worth using here: a single record can carry a multi-kilobyte HTML ' +
+      '`notes` or `description` blob that you did not ask for, and projecting it away costs ' +
+      'nothing. The projection is applied by this server after the record is fetched, so it ' +
+      'reduces what you read, not what Hudu sends.',
+    inputSchema: { ...idArg(spec), ...fieldsArg, ...responseFormatArg },
     operationClass: OperationClass.Read,
     handler: async (args, { client }) => {
       const id = args['id'] as number;
@@ -257,8 +305,15 @@ export function buildGetTool(spec: ResourceSpec): ToolDefinition {
       const record = unwrapRecord(response.data, spec.recordKey);
       if (record === undefined) return recordNotFound(spec, id);
 
+      // The same projection the list tools run, over a one-element array. A
+      // `fields` argument that was accepted and then ignored is worse than no
+      // argument at all: the caller reads the whole record believing they asked
+      // for two keys of it, and nothing in the response says otherwise.
+      const projected =
+        projectFields([record], args['fields'] as string[] | undefined)[0] ?? record;
+
       return {
-        data: record,
+        data: projected,
         markdown:
           args['response_format'] === ResponseFormat.Markdown
             ? (data): string => renderRecordMarkdown(spec.title, data)
@@ -281,6 +336,7 @@ export function buildCreateTool(spec: ResourceSpec): ToolDefinition | undefined 
       'offending field named when validation fails.',
     inputSchema: create.fields,
     operationClass: OperationClass.Create,
+    ...(spec.storesSecrets === true ? { requiresPasswordWrite: true } : {}),
     handler: async (args, { client }) => {
       const payload = compact(args, ['confirm', 'response_format']);
       const response = await client.post<unknown>(
@@ -306,6 +362,7 @@ export function buildUpdateTool(spec: ResourceSpec): ToolDefinition | undefined 
       `first with hudu_get_${spec.singular} if you intend to append rather than overwrite.`,
     inputSchema: { ...idArg(spec), ...update.fields },
     operationClass: OperationClass.Update,
+    ...(spec.storesSecrets === true ? { requiresPasswordWrite: true } : {}),
     impact: `Overwrites the supplied fields on this ${spec.title.toLowerCase()}.`,
     handler: async (args, { client }) => {
       const payload = compact(args, ['id', 'confirm', 'response_format']);
@@ -337,6 +394,12 @@ export function buildDeleteTool(spec: ResourceSpec): ToolDefinition | undefined 
         : 'There is no archive equivalent for this resource; deletion is the only removal path.'),
     inputSchema: idArg(spec),
     operationClass: OperationClass.Destructive,
+    // Both gates, and that is intended rather than an oversight. Deleting a
+    // credential is destructive *and* a write to the vault, so it needs
+    // HUDU_ALLOW_DESTRUCTIVE and HUDU_ALLOW_PASSWORD_WRITE together. An
+    // operator who enabled deletes for articles and assets has said nothing
+    // about whether an agent may destroy a stored password.
+    ...(spec.storesSecrets === true ? { requiresPasswordWrite: true } : {}),
     impact,
     handler: async (args, { client }) => {
       const id = args['id'] as number;
@@ -376,6 +439,7 @@ export function buildArchiveTool(spec: ResourceSpec): ToolDefinition | undefined
         .describe('true archives the record; false restores it from the archive.'),
     },
     operationClass: OperationClass.Update,
+    ...(spec.storesSecrets === true ? { requiresPasswordWrite: true } : {}),
     impact: `Hides or restores this ${spec.title.toLowerCase()}. Reversible.`,
     handler: async (args, { client }) => {
       const id = args['id'] as number;

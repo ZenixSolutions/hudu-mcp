@@ -26,10 +26,11 @@ import {
 } from '../security/classification.js';
 import {
   collectSecretValues,
+  REDACTED_TEXT,
+  REDACTION_NOTE,
+  REDACTION_NOTE_REVEAL_DISABLED,
   redactSecretsInText,
   stripSecrets,
-  WITHHELD,
-  WITHHELD_DISABLED,
 } from '../security/secrets.js';
 
 /** What a tool handler is given. */
@@ -68,6 +69,21 @@ export interface ToolDefinition<Shape extends z.ZodRawShape = z.ZodRawShape> {
   readonly requiresExportFlag?: boolean;
   /** Required only when the tool reveals stored secret material. */
   readonly requiresPasswordReveal?: boolean;
+  /**
+   * Required when the tool writes to a password record.
+   *
+   * A separate gate from {@link requiresPasswordReveal}, and deliberately so.
+   * Until 0.2.0 the reveal flag gated reads and nothing gated writes, which left
+   * a password-scoped key able to overwrite or archive a credential it could not
+   * read — the destructive direction open while the read direction was locked.
+   *
+   * Folding writes under the reveal flag would fix that the wrong way round.
+   * Documenting a newly issued credential without being able to read existing
+   * ones is a legitimate workflow, and collapsing the two would make an operator
+   * grant an agent read access to the whole vault in order to let it write one
+   * record.
+   */
+  readonly requiresPasswordWrite?: boolean;
   /** Human-readable impact, shown before a confirmed action runs. */
   readonly impact?: string;
   /**
@@ -128,6 +144,7 @@ export function shouldRegister(definition: ToolDefinition, config: Config): bool
   if (requirements.destructiveFlag && !config.allowDestructive) return false;
   if (definition.requiresExportFlag && !config.allowExports) return false;
   if (definition.requiresPasswordReveal && !config.allowPasswordReveal) return false;
+  if (definition.requiresPasswordWrite && !config.allowPasswordWrite) return false;
 
   return true;
 }
@@ -168,6 +185,14 @@ function buildDescription(definition: ToolDefinition): string {
     parts.push(
       'Returns stored credential material. Never echo the returned value into a summary, a ' +
         'file, a message, or any subsequent tool call; hand it to the user and nowhere else.',
+    );
+  }
+
+  if (definition.requiresPasswordWrite) {
+    parts.push(
+      'Writes to the credential vault. The record you change may be the only place a working ' +
+        'password is written down, so state exactly which record you are about to alter and ' +
+        'what happens to it before you call this.',
     );
   }
 
@@ -261,6 +286,15 @@ export async function executeTool(
       );
     }
 
+    if (definition.requiresPasswordWrite && !context.config.allowPasswordWrite) {
+      throw new CapabilityDisabledError(
+        `${definition.name} writes to a password record and password writes are disabled.`,
+        'The operator must set HUDU_ALLOW_PASSWORD_WRITE=1 and restart the server. This is a ' +
+          'separate gate from HUDU_ALLOW_PASSWORD_REVEAL: reading a stored credential and ' +
+          'overwriting one are different powers, and enabling either does not enable the other.',
+      );
+    }
+
     if (requirements.confirmArgument && rawArgs['confirm'] !== true) {
       throw new CapabilityDisabledError(
         `${definition.name} requires confirm: true and it was not supplied.`,
@@ -271,10 +305,13 @@ export async function executeTool(
 
     const result = await definition.handler(rawArgs, context);
 
-    const placeholder = context.config.allowPasswordReveal ? WITHHELD : WITHHELD_DISABLED;
-    const safeData = definition.requiresPasswordReveal
-      ? result.data
-      : stripSecrets(result.data, { placeholder });
+    const revealing = definition.requiresPasswordReveal === true;
+    // Collected from the *raw* record, before stripping, because these are the
+    // literal values the by-value scrub below has to hunt for in rendered text.
+    // Their count is also the only honest basis for the redaction note: it says
+    // something was withheld exactly when something was.
+    const secrets = revealing ? [] : collectSecretValues(result.data);
+    const safeData = revealing ? result.data : stripSecrets(result.data);
 
     const budgeted =
       safeData !== null && typeof safeData === 'object' && 'items' in safeData
@@ -292,17 +329,29 @@ export async function executeTool(
     // Value scrubbing stays as a second layer. It is cheap, and it still covers
     // a renderer that reaches something the key-based strip did not.
     const markdown =
-      rendered === undefined || definition.requiresPasswordReveal
+      rendered === undefined || revealing
         ? rendered
-        : redactSecretsInText(rendered, collectSecretValues(result.data), placeholder);
+        : redactSecretsInText(rendered, secrets, REDACTED_TEXT);
 
     const text = markdown ?? JSON.stringify(budgeted, null, 2);
     // `notice` is prepended to the model-visible text and is the one part of a
     // result that no strip walks, so it is scrubbed by value too.
-    const notice =
-      result.notice === undefined || definition.requiresPasswordReveal
+    const handlerNotice =
+      result.notice === undefined || revealing
         ? result.notice
-        : redactSecretsInText(result.notice, collectSecretValues(result.data), placeholder);
+        : redactSecretsInText(result.notice, secrets, REDACTED_TEXT);
+
+    // The explanation of a redaction lives here rather than in the payload. It
+    // is the part of the old placeholder worth keeping — a model does need to
+    // know a value exists — expressed where it cannot be mistaken for the value.
+    const redactionNote =
+      secrets.length === 0
+        ? undefined
+        : context.config.allowPasswordReveal
+          ? REDACTION_NOTE
+          : REDACTION_NOTE_REVEAL_DISABLED;
+
+    const notice = [handlerNotice, redactionNote].filter(Boolean).join(' ');
     const withNotice = notice ? `${notice}\n\n${text}` : text;
 
     return {

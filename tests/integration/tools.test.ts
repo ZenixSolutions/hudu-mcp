@@ -314,13 +314,27 @@ describe('error surfaces', () => {
 
 describe('structured content', () => {
   it('returns both text and structured content for a list', async () => {
-    const server = testServer({ json: [assetPasswordFixture()] });
+    const server = testServer({ json: [{ id: 1, name: 'Acme' }] });
 
-    const response = await server.call('hudu_list_passwords', {});
+    const response = await server.call('hudu_list_companies', {});
 
     expect(response.structuredContent).toBeDefined();
     expect(response.structuredContent?.['items']).toBeInstanceOf(Array);
     expect(JSON.parse(toolText(response))).toEqual(response.structuredContent);
+  });
+
+  it('prepends the notice to the text while leaving structured content clean', async () => {
+    // A redacted password list carries a notice explaining the redaction, so its
+    // text is a sentence followed by the JSON rather than bare JSON. The
+    // structured payload is unaffected — that is the half a client parses.
+    const server = testServer({ json: [assetPasswordFixture()] });
+
+    const response = await server.call('hudu_list_passwords', {});
+    const text = toolText(response);
+
+    expect(response.structuredContent?.['items']).toBeInstanceOf(Array);
+    expect(text.startsWith('{'), 'a notice precedes the payload').toBe(false);
+    expect(JSON.parse(text.slice(text.indexOf('{')))).toEqual(response.structuredContent);
   });
 
   it('wraps a non-object result so structured content is always an object', async () => {

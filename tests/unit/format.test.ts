@@ -25,6 +25,7 @@ import {
   VALUE_TRUNCATION_MARKER,
   VALUE_TRUNCATION_NOTE,
   unpaginatedInfo,
+  withCompletenessCaveat,
 } from '../../src/presentation/format.js';
 
 const FORBIDDEN_KEYS = ['total', 'total_count', 'has_more'] as const;
@@ -130,17 +131,26 @@ describe('unpaginatedInfo', () => {
 });
 
 describe('PageInfo shape', () => {
-  it('exposes exactly the six honest fields', () => {
+  it('exposes exactly the eight honest fields', () => {
     const expected: (keyof PageInfo)[] = [
       'page',
       'page_size',
       'count',
       'page_was_full',
       'next_page',
+      'pagination_supported',
+      'page_size_supported',
       'pagination_note',
     ];
     expect(Object.keys(pageInfo(1, 25, 25)).sort()).toEqual([...expected].sort());
     expect(Object.keys(unpaginatedInfo(3)).sort()).toEqual([...expected].sort());
+  });
+
+  it('states whether the endpoint pages at all, as a fact and not only as prose', () => {
+    // The note says it, but only a reader who parses English gets it — and the
+    // character budget needs the fact to describe a cut correctly.
+    expect(pageInfo(1, 25, 25).pagination_supported).toBe(true);
+    expect(unpaginatedInfo(25).pagination_supported).toBe(false);
   });
 });
 
@@ -214,6 +224,134 @@ describe('applyCharacterBudget', () => {
   it('emits no invented metadata even when truncating', () => {
     const items = Array.from({ length: 64 }, (_unused, index) => bigItem(index));
     assertNoInventedMetadata(applyCharacterBudget({ ...pageInfo(1, 64, 64), items }, 4000));
+  });
+
+  // Regression, and the reason key order is asserted rather than assumed:
+  // `hudu_list_rack_storages` returned `count: 5` under a `page_size: 21` and a
+  // note calling the set complete, with the correcting `truncated: true`
+  // twenty-seven kilobytes further down, after `items`. Clients clip long tool
+  // results, so a reader met the claim and never met the correction.
+  describe('a clipped read still sees the correction', () => {
+    const truncate = (
+      envelope: Partial<ListEnvelope<Record<string, unknown>>> = {},
+    ): ListEnvelope<Record<string, unknown>> =>
+      applyCharacterBudget(
+        {
+          ...pageInfo(1, 64, 64),
+          items: Array.from({ length: 64 }, (_unused, index) => bigItem(index)),
+          ...envelope,
+        },
+        4000,
+      );
+
+    it('places every truncation field before items in key order', () => {
+      const keys = Object.keys(truncate());
+      const itemsAt = keys.indexOf('items');
+
+      expect(itemsAt, 'items must be present').toBeGreaterThan(-1);
+      for (const field of ['truncated', 'truncation_note', 'records_on_page', 'pagination_note']) {
+        expect(keys.indexOf(field), `${field} must precede items`).toBeLessThan(itemsAt);
+      }
+      expect(itemsAt, 'items must be last, so nothing hides behind it').toBe(keys.length - 1);
+    });
+
+    it('carries truncated: true inside any serialised prefix that carries the note', () => {
+      const serialised = JSON.stringify(truncate());
+      const prefix = serialised.slice(0, serialised.indexOf('"items"'));
+
+      expect(prefix).toContain('"truncated":true');
+      expect(prefix, 'the corrected note must be readable without reaching items').toContain(
+        'partial answer',
+      );
+    });
+
+    it('reports count as records emitted and records_on_page as what Hudu returned', () => {
+      const output = truncate();
+
+      expect(output.count, 'count is always the length of items').toBe(output.items.length);
+      expect(output.records_on_page, 'the page figure gets its own name').toBe(64);
+      expect(output.page_size, 'the requested page size is a fact about the request').toBe(64);
+    });
+
+    it('rewrites pagination_note to describe what was emitted, claiming nothing complete', () => {
+      const note = truncate({ ...pageInfo(2, 64, 64) }).pagination_note;
+      const emitted = truncate({ ...pageInfo(2, 64, 64) }).items.length;
+
+      expect(note).toContain(`${emitted} of the 64`);
+      expect(note).toContain('partial answer');
+      expect(note, 'a truncated page is not complete').not.toMatch(/complete/i);
+      expect(note, 'a truncated page is not "the last page"').not.toContain('last page');
+    });
+
+    it('says an unpaginated truncated result dropped records that only filters can reach', () => {
+      const note = truncate({ ...unpaginatedInfo(64) }).pagination_note;
+
+      expect(note).toMatch(/dropped/);
+      expect(note).toContain('does not support pagination');
+      expect(note).toContain('narrowing the filters is the only way');
+      expect(note, 'never call a cut set complete').not.toMatch(/complete/i);
+    });
+
+    it('counts its own explanation against the budget', () => {
+      // Regression: the loop measured the envelope it started from and returned
+      // one several hundred characters longer, so the notes added to make a cut
+      // safe were exactly what pushed the result back over the limit.
+      const limit = 4000;
+      const output = applyCharacterBudget(
+        {
+          ...pageInfo(1, 64, 64),
+          items: Array.from({ length: 64 }, (_unused, index) => bigItem(index)),
+        },
+        limit,
+      );
+
+      expect(JSON.stringify(output).length).toBeLessThanOrEqual(limit);
+    });
+
+    it('does not offer page_size as a remedy where there is no page_size', () => {
+      expect(truncate({ ...unpaginatedInfo(64) }).truncation_note).not.toContain('page_size');
+      expect(truncate().truncation_note).toContain('page_size');
+    });
+  });
+});
+
+describe('withCompletenessCaveat', () => {
+  const caveat = 'Archived companies are missing from this list.';
+  const envelope = (): ListEnvelope<Record<string, unknown>> => ({
+    ...pageInfo(1, 25, 1),
+    items: [{ id: 1 }],
+  });
+
+  it('appends the caveat to the note a caller reads before believing a list', () => {
+    const output = withCompletenessCaveat(envelope(), caveat);
+
+    expect(output.pagination_note).toContain(caveat);
+    expect(output.completeness_caveat).toBe(caveat);
+  });
+
+  it('keeps items last so the caveat cannot be clipped away', () => {
+    const keys = Object.keys(withCompletenessCaveat(envelope(), caveat));
+
+    expect(keys.indexOf('completeness_caveat')).toBeLessThan(keys.indexOf('items'));
+    expect(keys.at(-1)).toBe('items');
+  });
+
+  it('survives truncation, which regenerates the note it was appended to', () => {
+    const items = Array.from({ length: 64 }, (_unused, index) => ({
+      id: index,
+      blob: 'x'.repeat(1000),
+    }));
+    const output = applyCharacterBudget(
+      withCompletenessCaveat({ ...pageInfo(1, 64, 64), items }, caveat),
+      4000,
+    );
+
+    expect(output.pagination_note).toContain(caveat);
+    expect(output.truncated).toBe(true);
+  });
+
+  it('emits no invented metadata', () => {
+    assertNoInventedMetadata(withCompletenessCaveat(envelope(), caveat));
   });
 });
 

@@ -12,7 +12,7 @@ HUDU_BASE_URL=https://hudu.example.com HUDU_API_KEY=... hudu-mcp --list-tools
 ```
 
 That prints the registered tools, then the withheld ones with the reason for
-each. 89 tools exist in total: 70 are registered with the default settings, 40
+each. 89 tools exist in total: 67 are registered with the default settings, 40
 under `HUDU_READ_ONLY=1`, and 41 under `HUDU_READ_ONLY=1` together with
 `HUDU_ALLOW_PASSWORD_REVEAL=1`.
 
@@ -21,13 +21,27 @@ under `HUDU_READ_ONLY=1`, and 41 under `HUDU_READ_ONLY=1` together with
 **Class** is the operation classification, which is what decides gating and the
 MCP annotations a client sees:
 
-| Class         | Meaning                                                        | Requires                                              |
-| ------------- | -------------------------------------------------------------- | ----------------------------------------------------- |
-| `Read`        | Retrieves data. No side effects on the Hudu instance.          | Nothing                                               |
-| `Create`      | Brings a new record into existence. Reversible by deleting it. | Write mode                                            |
-| `Update`      | Modifies an existing record. Overwrites prior field values.    | Write mode                                            |
-| `Admin`       | Alters instance-wide configuration or extracts data in bulk.   | Write mode, `confirm: true`                           |
-| `Destructive` | Removes data. Not reversible through this API.                 | Write mode, `HUDU_ALLOW_DESTRUCTIVE`, `confirm: true` |
+| Class         | Meaning                                                        | Requires                                              | `destructiveHint` |
+| ------------- | -------------------------------------------------------------- | ----------------------------------------------------- | ----------------- |
+| `Read`        | Retrieves data. No side effects on the Hudu instance.          | Nothing                                               | `false`           |
+| `Create`      | Brings a new record into existence. Reversible by deleting it. | Write mode                                            | `false`           |
+| `Update`      | Modifies an existing record. Overwrites prior field values.    | Write mode                                            | `true`            |
+| `Admin`       | Alters instance-wide configuration or extracts data in bulk.   | Write mode, `confirm: true`                           | `true`            |
+| `Destructive` | Removes data. Not reversible through this API.                 | Write mode, `HUDU_ALLOW_DESTRUCTIVE`, `confirm: true` | `true`            |
+
+The MCP annotations a client sees are derived from the class, never hand-set per
+tool. `destructiveHint: true` is the protocol's "may perform destructive
+updates"; `false` is "only additive", which is a stronger claim than "does not
+delete" and one an overwrite cannot make. `Update` also carries
+`idempotentHint: true` — replaying the same PUT lands in the same state, which is
+about retry safety rather than about what the first call cost. Only `Read` tools
+carry `readOnlyHint: true`, and every tool carries `openWorldHint: true`.
+
+The Hudu API key's own scope is a separate axis from all of this. Reading a
+credential and writing one are different gates in this server
+(`HUDU_ALLOW_PASSWORD_REVEAL` and `HUDU_ALLOW_PASSWORD_WRITE`) but a single
+scope on the key, which covers all REST actions on passwords. Both sides have to
+permit an operation.
 
 **Required arguments** lists the arguments with no default that the schema will
 not accept a call without. Optional filters and body fields are not listed here;
@@ -56,20 +70,48 @@ sides have to permit an operation.
   and rejects larger ones here rather than letting the server silently alter
   them. `hudu_list_asset_layouts` takes `page` alone (C3), and five list tools
   take neither (C2).
-- **`fields`** — on all 22 list tools. Returns only these top-level fields on
-  each record. Unknown names are ignored rather than rejected, because the Hudu
-  schema varies by version and by asset layout. One tool uses the same name for
-  something entirely different: `fields` on `hudu_create_asset_layout` is the
-  layout's field _definitions_, not a projection.
+- **`fields`** — on all 22 list tools **and on all 16 `hudu_get_*` tools except
+  `hudu_get_api_info`**, which returns two fields and takes no arguments. Returns
+  only these top-level keys on each record. Unknown names are ignored rather than
+  rejected, because the Hudu schema varies by version and by asset layout. It is
+  worth using on a single record too: an asset or company can carry a
+  multi-kilobyte HTML `notes` or `description` blob you did not ask for. The
+  projection runs in this server after the record is fetched, so it reduces what
+  you read, not what Hudu sends. One tool uses the same name for something
+  entirely different: `fields` on `hudu_create_asset_layout` is the layout's
+  field _definitions_, not a projection.
 - **`confirm`** — on every `Destructive` and `Admin` tool, and on
   `hudu_reveal_password`. Must be exactly `true`. It is supplied by the model, so
   it is a prompt-level speed bump rather than human-in-the-loop control; the
   environment flag beside it is the real gate.
 
-Every list tool returns an object with `items` plus `page`, `page_size`, `count`,
-`page_was_full`, `next_page` and `pagination_note`. There is deliberately no
-`total` and no `has_more`: no Hudu collection endpoint returns a count (C1), so
-both would have to be invented. See
+## What a list tool returns
+
+Every list tool returns an object with `items` plus these facts about them:
+
+| Field                  | Always present | Meaning                                                                                                                                       |
+| ---------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `page`                 | yes            | The page **requested**.                                                                                                                       |
+| `page_size`            | yes            | The page size **requested**. It never changes to describe what came back. On an unpaginated endpoint it echoes `count`.                       |
+| `count`                | yes            | The number of records in `items`, and nothing else. Never the number Hudu returned for the page.                                              |
+| `page_was_full`        | yes            | The page came back full, so more records probably exist. Not a promise that they do — a collection of exactly `page_size` looks the same.     |
+| `next_page`            | yes            | The page to request next, or `null`.                                                                                                          |
+| `pagination_supported` | yes            | `false` when the endpoint documents no `page` parameter at all (C2), so there is no further page to request and no `page_size` to lower.      |
+| `pagination_note`      | yes            | Plain-language statement of what is and is not known. Regenerated after a truncation so it describes what was actually emitted.               |
+| `completeness_caveat`  | no             | A standing limit on what this list can contain at all, independent of paging. `hudu_list_companies` carries one: it omits archived companies. |
+| `truncated`            | no             | `true` when this client dropped records to fit the response budget.                                                                           |
+| `records_on_page`      | no             | Present with `truncated`: how many records the page held before the cut. `count` is how many survived it.                                     |
+| `truncation_note`      | no             | What was dropped, and how to reach it.                                                                                                        |
+
+There is deliberately no `total` and no `has_more`: no Hudu collection endpoint
+returns a count (C1), so both would have to be invented.
+
+`truncated`, `records_on_page` and `truncation_note` are emitted **before**
+`items`, in JSON and in Markdown alike. Clients clip long tool results, and a
+correction that sits below twenty-five kilobytes of records is not a correction.
+`page_was_full: true` beside a smaller `count` is not a contradiction — it means
+the page was full and this response does not carry all of it, and `next_page`
+resumes after the whole page rather than after what you were shown. See
 [user-guide.md](user-guide.md#pagination-and-why-a-full-page-means-nothing).
 
 Parenthesised codes such as (A1) or (C4) refer to items in
@@ -84,16 +126,26 @@ that id forward. The two lookup tools go the other way, resolving an identifier
 held by a connected PSA or RMM. Deleting a company cascades to everything filed
 inside it, which makes it the widest-reaching delete in the API (A3).
 
-| Tool                               | Class       | Purpose                                                                                            | Required arguments | Gate                                                  |
-| ---------------------------------- | ----------- | -------------------------------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------- |
-| `hudu_list_companies`              | Read        | Find companies by name, integration identifier or update time. Usually the first call in any task. | none               | none                                                  |
-| `hudu_get_company`                 | Read        | Read one company record by id.                                                                     | `id`               | none                                                  |
-| `hudu_create_company`              | Create      | Add a company.                                                                                     | `name`             | write mode                                            |
-| `hudu_update_company`              | Update      | Replace the supplied fields on a company.                                                          | `id`               | write mode                                            |
-| `hudu_archive_company`             | Update      | Hide or restore a company without deleting it.                                                     | `id`, `archived`   | write mode                                            |
-| `hudu_delete_company`              | Destructive | Delete a company and cascade to everything filed under it (A3).                                    | `id`               | `HUDU_ALLOW_DESTRUCTIVE`, write mode, `confirm: true` |
-| `hudu_find_company_by_integration` | Read        | Resolve a PSA or RMM customer identifier to the Hudu company.                                      | `integration_slug` | none                                                  |
-| `hudu_lookup_integration_cards`    | Read        | Read the integration cards Hudu holds against an external record.                                  | `integration_slug` | none                                                  |
+**`hudu_list_companies` omits archived companies and Hudu offers no parameter
+that includes them.** On the measured instance 27 companies existed and the tool
+returned 22. No `archived` argument is offered, because `?archived=true` and
+`?archived=false` both return the same 22 records and `/companies` ignores an
+unrecognised parameter rather than rejecting it — the argument would look like a
+working filter and do nothing. Every result carries the exclusion in
+`completeness_caveat` and in `pagination_note`. `hudu_get_company` does reach an
+archived company by id, so a `company_id` no listing accounts for is still
+resolvable.
+
+| Tool                               | Class       | Purpose                                                                                         | Required arguments | Gate                                                  |
+| ---------------------------------- | ----------- | ----------------------------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------- |
+| `hudu_list_companies`              | Read        | Find companies by name, integration identifier or update time. Archived companies are excluded. | none               | none                                                  |
+| `hudu_get_company`                 | Read        | Read one company record by id.                                                                  | `id`               | none                                                  |
+| `hudu_create_company`              | Create      | Add a company.                                                                                  | `name`             | write mode                                            |
+| `hudu_update_company`              | Update      | Replace the supplied fields on a company.                                                       | `id`               | write mode                                            |
+| `hudu_archive_company`             | Update      | Hide or restore a company without deleting it.                                                  | `id`, `archived`   | write mode                                            |
+| `hudu_delete_company`              | Destructive | Delete a company and cascade to everything filed under it (A3).                                 | `id`               | `HUDU_ALLOW_DESTRUCTIVE`, write mode, `confirm: true` |
+| `hudu_find_company_by_integration` | Read        | Resolve a PSA or RMM customer identifier to the Hudu company.                                   | `integration_slug` | none                                                  |
+| `hudu_lookup_integration_cards`    | Read        | Read the integration cards Hudu holds against an external record.                               | `integration_slug` | none                                                  |
 
 ## Assets
 
@@ -192,23 +244,40 @@ model lists `password` and `otp_secret` among its **required** properties and
 `GET /asset_passwords` returns an array of that model (A1), so one unfiltered
 call would return every credential and every TOTP seed the key can see. Those
 two fields are stripped from every tool result centrally, in `executeTool`, and
-withheld from rendered Markdown too, which is built from the stripped payload. `hudu_reveal_password` is
-the single exception: it needs the environment flag, an explicit `confirm:
-true`, and one specific id. It is classed `Read` because it does not modify
-Hudu, so it stays available in read-only mode when the flag is set. Password
-folders are read-only in this API version (C11).
+withheld from rendered Markdown too, which is built from the stripped payload.
+`hudu_reveal_password` is the single exception: it needs the environment flag, an
+explicit `confirm: true`, and one specific id. It is classed `Read` because it
+does not modify Hudu, so it stays available in read-only mode when the flag is
+set. Password folders are read-only in this API version (C11).
 
-| Tool                         | Class       | Purpose                                                                             | Required arguments   | Gate                                                  |
-| ---------------------------- | ----------- | ----------------------------------------------------------------------------------- | -------------------- | ----------------------------------------------------- |
-| `hudu_list_passwords`        | Read        | List credential records with their metadata. Secret values are withheld (A1).       | none                 | none                                                  |
-| `hudu_get_password`          | Read        | Read one credential record without its secret.                                      | `id`                 | none                                                  |
-| `hudu_create_password`       | Create      | Store a new credential.                                                             | `name`, `company_id` | write mode                                            |
-| `hudu_update_password`       | Update      | Replace the supplied fields on a credential.                                        | `id`                 | write mode                                            |
-| `hudu_archive_password`      | Update      | Hide or restore a credential.                                                       | `id`, `archived`     | write mode                                            |
-| `hudu_delete_password`       | Destructive | Delete a credential, including the stored secret and OTP seed.                      | `id`                 | `HUDU_ALLOW_DESTRUCTIVE`, write mode, `confirm: true` |
-| `hudu_reveal_password`       | Read        | Return the stored secret and OTP seed for exactly one record, in clear text.        | `id`                 | `HUDU_ALLOW_PASSWORD_REVEAL`, `confirm: true`         |
-| `hudu_list_password_folders` | Read        | List the folders credentials are grouped into. Read-only in this API version (C11). | none                 | none                                                  |
-| `hudu_get_password_folder`   | Read        | Read one password folder.                                                           | `id`                 | none                                                  |
+**What a withheld secret looks like.** A stripped field comes back as `null` with
+a sibling `password_redacted: true` (or `otp_secret_redacted: true`). A field
+that genuinely stores nothing comes back `null` with **no** flag, so "this record
+documents an account with no stored password" stays distinguishable from "this
+record's password was withheld from you". No field named `password` or
+`otp_secret` ever holds a string. The explanation of the redaction is prepended
+to the result text as a notice rather than carried in the payload.
+
+**Writes are gated separately from reads.** `hudu_create_password`,
+`hudu_update_password` and `hudu_archive_password` need
+`HUDU_ALLOW_PASSWORD_WRITE`, and `hudu_delete_password` needs that _and_
+`HUDU_ALLOW_DESTRUCTIVE`. Neither password gate opens the other: overwriting the
+only copy of a working credential is a loss even though nothing leaks, and an
+operator who wants an agent to document a newly issued credential should not have
+to grant it read access to the whole vault. Under the default configuration the
+only password tools registered are the two lists and the two gets.
+
+| Tool                         | Class       | Purpose                                                                             | Required arguments   | Gate                                                                               |
+| ---------------------------- | ----------- | ----------------------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------- |
+| `hudu_list_passwords`        | Read        | List credential records with their metadata. Secret values are withheld (A1).       | none                 | none                                                                               |
+| `hudu_get_password`          | Read        | Read one credential record without its secret.                                      | `id`                 | none                                                                               |
+| `hudu_create_password`       | Create      | Store a new credential.                                                             | `name`, `company_id` | `HUDU_ALLOW_PASSWORD_WRITE`, write mode                                            |
+| `hudu_update_password`       | Update      | Replace the supplied fields on a credential.                                        | `id`                 | `HUDU_ALLOW_PASSWORD_WRITE`, write mode                                            |
+| `hudu_archive_password`      | Update      | Hide or restore a credential.                                                       | `id`, `archived`     | `HUDU_ALLOW_PASSWORD_WRITE`, write mode                                            |
+| `hudu_delete_password`       | Destructive | Delete a credential, including the stored secret and OTP seed.                      | `id`                 | `HUDU_ALLOW_PASSWORD_WRITE`, `HUDU_ALLOW_DESTRUCTIVE`, write mode, `confirm: true` |
+| `hudu_reveal_password`       | Read        | Return the stored secret and OTP seed for exactly one record, in clear text.        | `id`                 | `HUDU_ALLOW_PASSWORD_REVEAL`, `confirm: true`                                      |
+| `hudu_list_password_folders` | Read        | List the folders credentials are grouped into. Read-only in this API version (C11). | none                 | none                                                                               |
+| `hudu_get_password_folder`   | Read        | Read one password folder.                                                           | `id`                 | none                                                                               |
 
 ## Networks and IP addresses
 
@@ -242,32 +311,40 @@ call outright: `GET /networks?page=1` answers 400 (F4).
 ## Racks
 
 "Storage" here means cabinet, not disk. A rack storage is the rack; a rack
-storage item is one thing mounted in it. The item schema carries no reference to
-its rack and no filter scopes items to one, so **a rack's contents cannot be
-listed through the documented API** (C4) — `rack_storage_role_id` is a
-colour-coded classification, not the cabinet. Going the other way works: filter
-items by `asset_id` to find where a known device is racked. Unit numbering
+storage item is one thing mounted in it. **To see what is in a rack, call
+`hudu_get_rack_storage`**: the rack record carries `front_items` and `rear_items`,
+one slot per rack unit on each face, each slot listing what is mounted there with
+`asset_id` and `asset_name` — a complete per-unit elevation. Those fields are
+absent from the `RackStorage` definition in the captured contract, which is why
+C4 originally recorded a rack's contents as unlistable; that claim was wrong and
+is now written up as a correction (C4, F8). What is genuinely missing is the
+other direction: a rack storage item carries no rack id and no filter scopes
+items to a cabinet — `rack_storage_role_id` is a colour-coded classification, not
+the rack — so `hudu_list_rack_storage_items` is an instance-wide list, best used
+with `asset_id` to find where a known device is racked. Unit numbering
 direction and inclusivity are both undocumented and no conflict response is
-published for a double-booking (D4); `side` is documented as a string in the list
+published for a double-booking (D4) — though the elevation numbers every slot, so
+the direction in use on your instance can be read off a rack record, and an
+undocumented `descending_units` field is present whose contents nothing published
+explains (F8); `side` is documented as a string in the list
 filter and an integer in the write body (B7), and observation settles it as the
 lower-case strings `front`, `rear` and `both` (F7), which is what the tools take;
 `status` is documented as an integer with no published meanings (D2) and observed
 as the strings `reserved` and `used` (F7); and `max_wattage` and `power_draw`
-carry no unit (D3). Neither
-collection paginates (C2).
+carry no unit (D3). Neither collection paginates (C2).
 
-| Tool                            | Class       | Purpose                                                                   | Required arguments | Gate                                                  |
-| ------------------------------- | ----------- | ------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------- |
-| `hudu_list_rack_storages`       | Read        | List racks. Unpaginated, and no name or search filter is documented (C2). | none               | none                                                  |
-| `hudu_get_rack_storage`         | Read        | Read one rack.                                                            | `id`               | none                                                  |
-| `hudu_create_rack_storage`      | Create      | Create a rack.                                                            | `name`             | write mode                                            |
-| `hudu_update_rack_storage`      | Update      | Replace the supplied fields on a rack.                                    | `id`               | write mode                                            |
-| `hudu_delete_rack_storage`      | Destructive | Delete a rack. What happens to the items in it is unspecified (D11).      | `id`               | `HUDU_ALLOW_DESTRUCTIVE`, write mode, `confirm: true` |
-| `hudu_list_rack_storage_items`  | Read        | List mounted items instance-wide. No filter scopes them to a rack (C4).   | none               | none                                                  |
-| `hudu_get_rack_storage_item`    | Read        | Read one mounted item.                                                    | `id`               | none                                                  |
-| `hudu_create_rack_storage_item` | Create      | Mount an asset in a unit range on one side of a rack.                     | none               | write mode                                            |
-| `hudu_update_rack_storage_item` | Update      | Replace the supplied fields on a mounted item.                            | `id`               | write mode                                            |
-| `hudu_delete_rack_storage_item` | Destructive | Unmount an item. The asset it pointed at is untouched.                    | `id`               | `HUDU_ALLOW_DESTRUCTIVE`, write mode, `confirm: true` |
+| Tool                            | Class       | Purpose                                                                                                                         | Required arguments | Gate                                                  |
+| ------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------- |
+| `hudu_list_rack_storages`       | Read        | List racks, each with its full elevation. Unpaginated, and no name or search filter is documented (C2).                         | none               | none                                                  |
+| `hudu_get_rack_storage`         | Read        | Read one rack, including its `front_items`/`rear_items` per-unit elevation.                                                     | `id`               | none                                                  |
+| `hudu_create_rack_storage`      | Create      | Create a rack.                                                                                                                  | `name`             | write mode                                            |
+| `hudu_update_rack_storage`      | Update      | Replace the supplied fields on a rack.                                                                                          | `id`               | write mode                                            |
+| `hudu_delete_rack_storage`      | Destructive | Delete a rack. What happens to the items in it is unspecified (D11).                                                            | `id`               | `HUDU_ALLOW_DESTRUCTIVE`, write mode, `confirm: true` |
+| `hudu_list_rack_storage_items`  | Read        | List mounted items instance-wide; filter by `asset_id` to find where a device is racked. No filter scopes items to a rack (C4). | none               | none                                                  |
+| `hudu_get_rack_storage_item`    | Read        | Read one mounted item.                                                                                                          | `id`               | none                                                  |
+| `hudu_create_rack_storage_item` | Create      | Mount an asset in a unit range on one side of a rack.                                                                           | none               | write mode                                            |
+| `hudu_update_rack_storage_item` | Update      | Replace the supplied fields on a mounted item.                                                                                  | `id`               | write mode                                            |
+| `hudu_delete_rack_storage_item` | Destructive | Unmount an item. The asset it pointed at is untouched.                                                                          | `id`               | `HUDU_ALLOW_DESTRUCTIVE`, write mode, `confirm: true` |
 
 ## Websites
 
@@ -351,6 +428,19 @@ returns no count and cannot be undone (A2). Expirations are read-only on this
 contract (C14) and have no date-range filter, so "the next 30 days" is a
 comparison you make against each entry's `date`.
 
+Three things about the activity log will produce a wrong answer if nobody warns
+you. **The filter names and the response field names are different words for the
+same things**: you filter on `resource_type`, `resource_id` and `action_message`,
+and entries come back carrying `record_type`, `record_id` and `action`. No field
+called `action_message` exists on an entry. **`viewed` events dominate an active
+instance and there is no changes-only filter** — `action_message` takes one value
+at a time, so excluding views means one request per action value or dropping them
+client-side, and the newest entry for a record is frequently a view rather than
+its newest change. **`details` does not say what changed**: it is a JSON string
+holding a snapshot of the record _after_ the action, with no before value and no
+field-level diff, so answering "what changed" needs two consecutive `updated`
+entries compared by hand.
+
 | Tool                       | Class       | Purpose                                                                             | Required arguments | Gate                                                  |
 | -------------------------- | ----------- | ----------------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------- |
 | `hudu_get_api_info`        | Read        | Report the version and build date of the instance. The cheapest connectivity check. | none               | none                                                  |
@@ -364,9 +454,8 @@ comparison you make against each entry's `date`.
 
 Read side only. `POST /uploads`, `POST /public_photos` and `PUT
 /public_photos/{id}` are `multipart/form-data` and the contract documents no
-request body for them, so file upload is not implemented in 0.1.0 (E1) — tell
-the user to attach the file in the Hudu web UI rather than claiming an upload
-happened. `/uploads` documents neither pagination nor any filter (C2), so it
+request body for them, so file upload is not implemented (E1) — tell the user to
+attach the file in the Hudu web UI rather than claiming an upload happened. `/uploads` documents neither pagination nor any filter (C2), so it
 returns the instance's attachments in one response; match on `uploadable_type`
 and `uploadable_id` yourself. Public photo URLs are public: anyone holding one
 can fetch the image without authenticating.

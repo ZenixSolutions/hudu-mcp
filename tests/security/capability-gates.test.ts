@@ -90,6 +90,9 @@ describe('read-only mode', () => {
       if (entry.reason.includes('HUDU_ALLOW_PASSWORD_REVEAL')) {
         expect(server.config.allowPasswordReveal).toBe(false);
       }
+      if (entry.reason.includes('HUDU_ALLOW_PASSWORD_WRITE')) {
+        expect(server.config.allowPasswordWrite).toBe(false);
+      }
     }
   });
 
@@ -142,8 +145,13 @@ describe('destructive tools', () => {
     expect(testServer({ json: [] }).has(name)).toBe(false);
   });
 
+  // hudu_delete_password needs HUDU_ALLOW_PASSWORD_WRITE as well, because
+  // destroying a credential is both a destructive act and a vault write. Both
+  // gates are open here so this stays a test of the destructive gate.
   it.each(DESTRUCTIVE)('%s is present with the flag', (name) => {
-    expect(testServer({ json: [] }, { allowDestructive: true }).has(name)).toBe(true);
+    expect(
+      testServer({ json: [] }, { allowDestructive: true, allowPasswordWrite: true }).has(name),
+    ).toBe(true);
   });
 
   it('refuses every destructive tool without confirm: true', async () => {
@@ -258,6 +266,157 @@ describe('export tools', () => {
   });
 });
 
+/**
+ * Password writes.
+ *
+ * Until 0.2.0 `HUDU_ALLOW_PASSWORD_REVEAL` gated reads and *nothing* gated
+ * writes, so a password-scoped key could not read a credential but could
+ * overwrite or archive one: the destructive direction open while the read
+ * direction was locked. `HUDU_ALLOW_PASSWORD_WRITE` closes it, and stays
+ * independent of the reveal flag — documenting a newly issued credential
+ * without being able to read existing ones is a legitimate posture, and
+ * collapsing the two would make an operator grant vault-wide reads to get it.
+ */
+describe('password write tools', () => {
+  const PASSWORD_WRITES = [
+    'hudu_create_password',
+    'hudu_update_password',
+    'hudu_archive_password',
+    'hudu_delete_password',
+  ];
+
+  it('registers none of them under any combination of the other gates', () => {
+    const combinations = [
+      {},
+      { allowDestructive: true },
+      { allowExports: true },
+      { allowPasswordReveal: true },
+      { readOnly: true },
+      { readOnly: true, allowPasswordReveal: true },
+      { allowDestructive: true, allowExports: true, allowPasswordReveal: true },
+    ];
+
+    for (const overrides of combinations) {
+      const server = testServer({ json: {} }, overrides);
+      const registered = server.built.tools
+        .map((tool) => tool.name)
+        .filter((name) => PASSWORD_WRITES.includes(name));
+
+      expect(
+        registered,
+        `${JSON.stringify(overrides)} registered a password write without HUDU_ALLOW_PASSWORD_WRITE`,
+      ).toEqual([]);
+    }
+  });
+
+  it('registers no tool flagged requiresPasswordWrite without the flag', () => {
+    // Name-independent: a write tool added later under a different name is
+    // still caught, because the assertion is on the flag rather than a list.
+    for (const overrides of [{}, { allowDestructive: true }, { allowPasswordReveal: true }]) {
+      const server = testServer({ json: {} }, overrides);
+      const offenders = server.built.tools.filter(
+        (tool) => tool.definition.requiresPasswordWrite === true,
+      );
+      expect(
+        offenders.map((tool) => tool.name),
+        JSON.stringify(overrides),
+      ).toEqual([]);
+    }
+  });
+
+  it.each(PASSWORD_WRITES)('%s says which gate withheld it', (name) => {
+    const server = testServer({ json: {} }, { allowDestructive: true });
+    const entry = server.built.withheld.find((item) => item.name === name);
+
+    expect(entry, `${name} must be withheld by default`).toBeDefined();
+    expect(entry?.reason).toContain('HUDU_ALLOW_PASSWORD_WRITE');
+  });
+
+  it('registers create, update and archive with the flag set', () => {
+    const server = testServer({ json: {} }, { allowPasswordWrite: true });
+
+    expect(server.has('hudu_create_password')).toBe(true);
+    expect(server.has('hudu_update_password')).toBe(true);
+    expect(server.has('hudu_archive_password')).toBe(true);
+  });
+
+  it.each([
+    ['hudu_create_password', { name: 'Firewall admin', company_id: 3 }],
+    ['hudu_update_password', { id: 9, username: 'admin' }],
+    ['hudu_archive_password', { id: 9, archived: true }],
+  ])('%s functions with the flag set', async (name, args) => {
+    const server = testServer(
+      { json: { id: 9, name: 'Firewall admin' } },
+      { allowPasswordWrite: true },
+    );
+
+    const response = await server.call(name, args);
+
+    expect(response.isError, `${name} failed with the gate open`).toBeUndefined();
+    expect(server.http.requests, `${name} issued no request`).toHaveLength(1);
+  });
+
+  // Deleting a credential is destructive *and* a vault write, so it needs both
+  // gates. That is intended: an operator who enabled deletes for articles and
+  // assets has said nothing about whether an agent may destroy a password.
+  it('needs both gates to delete, and neither alone will do', () => {
+    expect(testServer({ json: {} }, { allowDestructive: true }).has('hudu_delete_password')).toBe(
+      false,
+    );
+    expect(testServer({ json: {} }, { allowPasswordWrite: true }).has('hudu_delete_password')).toBe(
+      false,
+    );
+    expect(
+      testServer({ json: {} }, { allowDestructive: true, allowPasswordWrite: true }).has(
+        'hudu_delete_password',
+      ),
+    ).toBe(true);
+  });
+
+  it('leaves password reads alone — the gate is about writing, not reading', () => {
+    const server = testServer({ json: {} });
+
+    expect(server.has('hudu_list_passwords')).toBe(true);
+    expect(server.has('hudu_get_password')).toBe(true);
+    expect(server.has('hudu_list_password_folders')).toBe(true);
+  });
+
+  it('is still withheld in read-only mode, where the write gate is redundant', () => {
+    const server = testServer({ json: {} }, { readOnly: true, allowPasswordWrite: true });
+    for (const name of PASSWORD_WRITES) expect(server.has(name)).toBe(false);
+  });
+
+  it.each(PASSWORD_WRITES)(
+    're-checks the flag in executeTool for %s, not only at registration',
+    async (name) => {
+      const enabled = testServer(
+        { json: {} },
+        { allowPasswordWrite: true, allowDestructive: true },
+      );
+      const disabled = testServer({ json: {} }, { allowDestructive: true });
+
+      const { executeTool } = await import('../../src/tools/define.js');
+      const response = await executeTool(
+        enabled.tool(name),
+        { id: 9, name: 'Firewall admin', company_id: 3, archived: true, confirm: true },
+        { client: disabled.client, config: disabled.config },
+      );
+
+      expect(response.isError).toBe(true);
+      expect(toolText(response)).toContain('HUDU_ALLOW_PASSWORD_WRITE');
+      expect(disabled.http.requests, 'a refused write must not reach Hudu').toHaveLength(0);
+    },
+  );
+
+  it('does not gate writes to resources that store no credentials', () => {
+    const server = testServer({ json: {} });
+
+    expect(server.has('hudu_create_company')).toBe(true);
+    expect(server.has('hudu_update_company')).toBe(true);
+    expect(server.has('hudu_archive_company')).toBe(true);
+  });
+});
+
 describe('gate independence', () => {
   it('opening one gate does not open another', () => {
     const destructiveOnly = testServer({ json: {} }, { allowDestructive: true });
@@ -265,6 +424,28 @@ describe('gate independence', () => {
     expect(destructiveOnly.has('hudu_delete_company')).toBe(true);
     expect(destructiveOnly.has('hudu_reveal_password')).toBe(false);
     expect(destructiveOnly.has('hudu_start_s3_export')).toBe(false);
+    expect(destructiveOnly.has('hudu_create_password')).toBe(false);
+  });
+
+  // The two password gates are separate on purpose. Reading a stored credential
+  // and overwriting one are different powers, and either without the other is a
+  // posture an operator may reasonably want.
+  it('the reveal gate does not open the write gate', () => {
+    const revealOnly = testServer({ json: {} }, { allowPasswordReveal: true });
+
+    expect(revealOnly.has('hudu_reveal_password')).toBe(true);
+    expect(revealOnly.has('hudu_create_password')).toBe(false);
+    expect(revealOnly.has('hudu_update_password')).toBe(false);
+  });
+
+  it('the write gate does not open the reveal gate', () => {
+    const writeOnly = testServer({ json: {} }, { allowPasswordWrite: true });
+
+    expect(writeOnly.has('hudu_create_password')).toBe(true);
+    expect(
+      writeOnly.has('hudu_reveal_password'),
+      'writing a credential must not confer reading every other one',
+    ).toBe(false);
   });
 
   it('the default configuration opens no gate at all', () => {
@@ -273,7 +454,8 @@ describe('gate independence', () => {
       (tool) =>
         CLASS_REQUIREMENTS[tool.operationClass].destructiveFlag ||
         tool.definition.requiresExportFlag === true ||
-        tool.definition.requiresPasswordReveal === true,
+        tool.definition.requiresPasswordReveal === true ||
+        tool.definition.requiresPasswordWrite === true,
     );
 
     expect(
@@ -292,7 +474,12 @@ describe('gate independence', () => {
     ];
     const server = testServer(
       { json: {} },
-      { allowDestructive: true, allowExports: true, allowPasswordReveal: true },
+      {
+        allowDestructive: true,
+        allowExports: true,
+        allowPasswordReveal: true,
+        allowPasswordWrite: true,
+      },
     );
 
     for (const tool of server.built.tools) {

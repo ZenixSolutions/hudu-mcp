@@ -1,9 +1,21 @@
 # ADR-002: Security posture — operation classes, environment gates, and deliberate capability reductions
 
-- **Status:** Accepted
+- **Status:** Accepted; sections 1, 2 and 4 partially superseded by ADR-003
 - **Date:** 2026-08-04
 - **Related RFC:** RFC-002 (D6, Security Impact)
 - **Approved by:** Josh (Project Owner)
+
+> **Two decisions recorded here turned out to be wrong, and were corrected in
+> 0.2.0 after an external review of the published 0.1.0 package.** This document
+> is left as written, because a record of reasoning that produced a defect is
+> worth more than a record edited to look correct. Read
+> [ADR-003](ADR-003-security-posture-corrections.md) alongside it. In short:
+> section 2's four gates are now five (`HUDU_ALLOW_PASSWORD_WRITE` was missing,
+> and the write direction to the credential vault was ungated); section 4's
+> "placeholder is left behind" is now a `null` plus a `<field>_redacted: true`
+> flag; and section 1's derived annotations claimed `destructiveHint: false` for
+> every `Update` and `Admin` tool, which the protocol's own definition of the
+> hint does not permit. Everything else here still holds.
 
 ## Context
 
@@ -298,4 +310,11 @@ None.
 
 ## Superseded By
 
-None.
+[ADR-003: Security posture corrections](ADR-003-security-posture-corrections.md),
+in part. ADR-003 replaces the gate list in section 2 (four gates become five),
+the redaction shape in section 4 (a placeholder string becomes `null` plus a
+sibling flag), and the annotation mapping implied by section 1 (`Update` and
+`Admin` now carry `destructiveHint: true`). The rest of this ADR — central
+stripping, environment-only gating, unregistered rather than refusing, the
+single-record reveal, the deliberate capability reductions, and every consequence
+and rejected alternative recorded below — stands.

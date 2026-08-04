@@ -26,6 +26,31 @@ const updatedAtDescription =
   'A bare timestamp with no comma matches that exact moment.';
 
 /**
+ * How `name` and `search` differ, which the captured contract never says.
+ *
+ * Measured on Hudu 2.34.2 against `GET /assets`: `name: "UDM Pro"` matched the
+ * whole name case-insensitively and excluded "UDM Pro Max", while `search:
+ * "UDM"` matched as a substring and returned both. The measurement is from the
+ * asset list rather than these three endpoints, so it is offered as the
+ * behaviour to expect rather than as a fact established here. It matters most
+ * on articles, where a title fragment is the usual way in: a caller who assumes
+ * `name` is a substring match gets a short answer that looks complete.
+ */
+const NAME_MATCHING =
+  'Matching, observed on Hudu 2.34.2 and documented nowhere: a `name` filter matched the whole ' +
+  'value case-insensitively rather than as a substring — on the asset list, `name: "UDM Pro"` ' +
+  'excluded "UDM Pro Max". That is one instance rather than a published contract, so treat it ' +
+  'as a working assumption: an empty result here means nothing matched the name in full, not ' +
+  'that no such record exists.';
+
+const SEARCH_MATCHING =
+  'Matching, observed on Hudu 2.34.2 and documented nowhere: `search` matched as a substring ' +
+  'where `name` matched the whole value — on the asset list, `search: "UDM"` returned both "UDM ' +
+  'Pro" and "UDM Pro Max", while `name: "UDM Pro"` returned only the first. That is one ' +
+  'instance rather than a published contract, but it is the reason to reach for this parameter ' +
+  'when you hold a fragment of a title rather than all of it.';
+
+/**
  * The public-sharing warning.
  *
  * Article IX treats an externally visible action as needing its consequence
@@ -105,8 +130,14 @@ export const articlesSpec: ResourceSpec = {
     search: z
       .string()
       .optional()
-      .describe('Broad text search across articles. The best first filter when you have a topic.'),
-    name: z.string().optional().describe('Match against the article title specifically.'),
+      .describe(
+        'Broad text search across articles. The best first filter when you have a topic. ' +
+          SEARCH_MATCHING,
+      ),
+    name: z
+      .string()
+      .optional()
+      .describe(`Match against the article title specifically. ${NAME_MATCHING}`),
     company_id: z
       .number()
       .int()
@@ -172,7 +203,7 @@ export const foldersSpec: ResourceSpec = {
     'reading.',
   paginated: true,
   filters: {
-    name: z.string().optional().describe('Match against the folder name.'),
+    name: z.string().optional().describe(`Match against the folder name. ${NAME_MATCHING}`),
     company_id: z
       .number()
       .int()
@@ -283,7 +314,7 @@ export const proceduresSpec: ResourceSpec = {
     '(hudu_list_articles).',
   paginated: true,
   filters: {
-    name: z.string().optional().describe('Match against the procedure name.'),
+    name: z.string().optional().describe(`Match against the procedure name. ${NAME_MATCHING}`),
     company_id: z
       .number()
       .int()

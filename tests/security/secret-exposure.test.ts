@@ -24,7 +24,13 @@ import {
   prepareTool,
 } from '../../src/tools/define.js';
 import { OperationClass } from '../../src/security/classification.js';
-import { findSecretFields, WITHHELD, WITHHELD_DISABLED } from '../../src/security/secrets.js';
+import {
+  findSecretFields,
+  REDACTED_TEXT,
+  REDACTION_NOTE,
+  REDACTION_NOTE_REVEAL_DISABLED,
+  SECRET_FIELDS,
+} from '../../src/security/secrets.js';
 import {
   assetPasswordFixture,
   SECRET_OTP_VALUE,
@@ -38,6 +44,26 @@ const LEAK_GUARD =
   'structural in executeTool (CLAUDE.md Invariant 3) and only the tool declared with ' +
   'requiresPasswordReveal may bypass it.';
 
+const SHAPE_GUARD =
+  'A field named `password` or `otp_secret` holds a string. Even a redaction notice is ' +
+  'forbidden there: a downstream model that trusts the field name pastes whatever it finds ' +
+  'into a ticket, and a 54-character placeholder is indistinguishable from a credential ' +
+  'without counting distinct values across records.';
+
+/** Every `password`/`otp_secret` in a payload, wherever it is nested. */
+function secretFieldValues(value: unknown, found: unknown[] = []): unknown[] {
+  if (value === null || typeof value !== 'object') return found;
+  if (Array.isArray(value)) {
+    for (const item of value) secretFieldValues(item, found);
+    return found;
+  }
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if ((SECRET_FIELDS as readonly string[]).includes(key)) found.push(item);
+    else secretFieldValues(item, found);
+  }
+  return found;
+}
+
 /** Assert a tool response carries no secret in any of the places a model reads. */
 function expectNoSecrets(response: McpToolResponse): void {
   const text = toolText(response);
@@ -47,6 +73,16 @@ function expectNoSecrets(response: McpToolResponse): void {
   expect(findSecretFields(response.structuredContent), LEAK_GUARD).toEqual([]);
   expect(JSON.stringify(response), LEAK_GUARD).not.toContain(SECRET_PASSWORD_VALUE);
   expect(JSON.stringify(response), LEAK_GUARD).not.toContain(SECRET_OTP_VALUE);
+
+  // Structural, not value-based: whatever the payload is, a secret field is
+  // never a string. `findSecretFields` says the same thing, but this states the
+  // rule the reviewer's finding actually turned on.
+  for (const value of secretFieldValues(response.structuredContent)) {
+    // An empty string is passed through untouched, because it was never a
+    // secret; anything else that is a string got there by leaking.
+    if (value === '') continue;
+    expect(typeof value, SHAPE_GUARD).not.toBe('string');
+  }
 }
 
 describe('password tools withhold secrets by default', () => {
@@ -61,7 +97,8 @@ describe('password tools withhold secrets by default', () => {
     // The useful metadata survives — that is what makes the default tolerable.
     expect(toolText(response)).toContain('Firewall admin');
     expect(toolText(response)).toContain('admin');
-    expect(toolText(response)).toContain(WITHHELD_DISABLED);
+    // The explanation is in the notice, where it cannot be read as a value.
+    expect(toolText(response)).toContain(REDACTION_NOTE_REVEAL_DISABLED);
   });
 
   it('hudu_get_password returns metadata without the secrets', async () => {
@@ -74,7 +111,12 @@ describe('password tools withhold secrets by default', () => {
   });
 
   it('hudu_create_password does not echo the secret it just stored', async () => {
-    const server = testServer({ status: 201, json: assetPasswordFixture(9) });
+    // The write gate is open here only so the tool exists to be tested; what is
+    // under test is that the response carries no secret back.
+    const server = testServer(
+      { status: 201, json: assetPasswordFixture(9) },
+      { allowPasswordWrite: true },
+    );
 
     const response = await server.call('hudu_create_password', {
       name: 'Firewall admin',
@@ -86,7 +128,7 @@ describe('password tools withhold secrets by default', () => {
   });
 
   it('hudu_update_password does not echo the secret back', async () => {
-    const server = testServer({ json: assetPasswordFixture(9) });
+    const server = testServer({ json: assetPasswordFixture(9) }, { allowPasswordWrite: true });
 
     const response = await server.call('hudu_update_password', {
       id: 9,
@@ -98,7 +140,7 @@ describe('password tools withhold secrets by default', () => {
   });
 
   it('hudu_archive_password does not echo the secret back', async () => {
-    const server = testServer({ json: assetPasswordFixture(9) });
+    const server = testServer({ json: assetPasswordFixture(9) }, { allowPasswordWrite: true });
 
     const response = await server.call('hudu_archive_password', {
       id: 9,
@@ -120,7 +162,7 @@ describe('password tools withhold secrets by default', () => {
 
     expectNoSecrets(response);
     expect(toolText(response)).toContain('Firewall admin');
-    expect(toolText(response)).toContain(WITHHELD_DISABLED);
+    expect(toolText(response)).toContain(REDACTION_NOTE_REVEAL_DISABLED);
   });
 
   it('markdown rendering of a list withholds the secrets', async () => {
@@ -161,25 +203,71 @@ describe('password tools withhold secrets by default', () => {
     expectNoSecrets(await server.call('hudu_list_assets', {}));
   });
 
-  it('placeholder text shows a value exists without disclosing it', async () => {
+  /**
+   * Regression, and the reason this whole shape changed.
+   *
+   * 0.1.0 answered `hudu_list_passwords` with a field literally named `password`
+   * holding `"[withheld: password reveal is disabled on this server]"` — a
+   * plausible 54-character string, sixteen times over. The reviewer only
+   * established those were not credentials by counting distinct values across
+   * sixteen records. Nothing downstream does that.
+   */
+  it('nulls the secret and flags it, instead of parking a string in the field', async () => {
     const server = testServer({ json: assetPasswordFixture(7) });
 
     const response = await server.call('hudu_get_password', { id: 7 });
 
-    expect(response.structuredContent?.['password']).toBe(WITHHELD_DISABLED);
-    expect(response.structuredContent?.['otp_secret']).toBe(WITHHELD_DISABLED);
+    expect(response.structuredContent?.['password'], SHAPE_GUARD).toBeNull();
+    expect(response.structuredContent?.['otp_secret'], SHAPE_GUARD).toBeNull();
+    expect(response.structuredContent?.['password_redacted']).toBe(true);
+    expect(response.structuredContent?.['otp_secret_redacted']).toBe(true);
+    expect(JSON.stringify(response), LEAK_GUARD).not.toContain(SECRET_PASSWORD_VALUE);
   });
 
-  it('points at the reveal tool when reveal is enabled', async () => {
+  it('keeps the same shape across every record of a list', async () => {
+    const server = testServer({
+      json: [assetPasswordFixture(1), assetPasswordFixture(2), assetPasswordFixture(3)],
+    });
+
+    const response = await server.call('hudu_list_passwords', {});
+    const items = response.structuredContent?.['items'] as Record<string, unknown>[];
+
+    expect(items).toHaveLength(3);
+    for (const item of items) {
+      expect(item['password'], SHAPE_GUARD).toBeNull();
+      expect(item['password_redacted']).toBe(true);
+    }
+  });
+
+  it('explains the redaction in the notice, under no key at all', async () => {
     const server = testServer({ json: assetPasswordFixture(7) }, { allowPasswordReveal: true });
 
     const response = await server.call('hudu_get_password', { id: 7 });
 
     expectNoSecrets(response);
-    expect(response.structuredContent?.['password']).toBe(WITHHELD);
+    // The human-readable explanation survives — the goal of the old placeholder
+    // was right — but it lives in the notice rather than under a secret's name.
+    expect(toolText(response)).toContain(REDACTION_NOTE);
+    expect(response.structuredContent?.['password']).toBeNull();
+    expect(response.structuredContent?.['password_redacted']).toBe(true);
   });
 
-  it('preserves a null password rather than implying a secret exists', async () => {
+  it('says nothing about redaction when there was nothing to redact', async () => {
+    const server = testServer({ json: { id: 1, name: 'Acme' } });
+
+    const text = toolText(await server.call('hudu_get_company', { id: 1 }));
+
+    expect(text).not.toContain('withheld');
+    expect(text).not.toContain(REDACTION_NOTE_REVEAL_DISABLED);
+  });
+
+  /**
+   * "This record has no stored password" and "this record's password was
+   * withheld from you" are different facts and must stay distinguishable. Flag
+   * an empty field and an agent reports a credential that does not exist; fail
+   * to flag a real one and it reports a documented credential as missing.
+   */
+  it('preserves a null password with no flag, so absence stays legible', async () => {
     const server = testServer({
       json: { ...assetPasswordFixture(7), password: null, otp_secret: null },
     });
@@ -188,6 +276,28 @@ describe('password tools withhold secrets by default', () => {
 
     expect(response.structuredContent?.['password']).toBeNull();
     expect(response.structuredContent?.['otp_secret']).toBeNull();
+    expect(response.structuredContent).not.toHaveProperty('password_redacted');
+    expect(response.structuredContent).not.toHaveProperty('otp_secret_redacted');
+  });
+
+  it('tells a stored-but-withheld secret apart from an absent one in one response', async () => {
+    const server = testServer({
+      json: [
+        { ...assetPasswordFixture(1), otp_secret: null },
+        { ...assetPasswordFixture(2), password: null, otp_secret: null },
+      ],
+    });
+
+    const items = (await server.call('hudu_list_passwords', {})).structuredContent?.[
+      'items'
+    ] as Record<string, unknown>[];
+
+    expect(items[0]!['password']).toBeNull();
+    expect(items[0]!['password_redacted'], 'record 1 stores a password').toBe(true);
+    expect(items[0]!).not.toHaveProperty('otp_secret_redacted');
+
+    expect(items[1]!['password']).toBeNull();
+    expect(items[1]!, 'record 2 stores nothing').not.toHaveProperty('password_redacted');
   });
 });
 
@@ -213,7 +323,7 @@ describe('markdown rendering cannot outrun the scrubber', () => {
     const response = await server.call('hudu_list_assets', { response_format: 'markdown' });
 
     expect(toolText(response), LEAK_GUARD).not.toContain('Tr0ub4dor');
-    expect(toolText(response)).toContain(WITHHELD_DISABLED);
+    expect(toolText(response)).toContain(REDACTION_NOTE_REVEAL_DISABLED);
   });
 
   it('withholds a nested secret that falls across the display cut', async () => {
@@ -242,7 +352,7 @@ describe('markdown rendering cannot outrun the scrubber', () => {
     const response = await server.call('hudu_get_password', { id: 7, response_format: 'markdown' });
 
     expect(toolText(response), LEAK_GUARD).not.toContain('LEAKCANARY');
-    expect(toolText(response)).toContain(WITHHELD_DISABLED);
+    expect(toolText(response)).toContain(REDACTION_NOTE_REVEAL_DISABLED);
   });
 
   it('renders from the budgeted payload, so Markdown cannot outgrow the budget', async () => {
@@ -300,6 +410,11 @@ describe('notice is scrubbed like the rest of the result', () => {
 
     expect(toolText(response), LEAK_GUARD).not.toContain(SECRET_PASSWORD_VALUE);
     expect(findSecretFields(response.structuredContent), LEAK_GUARD).toEqual([]);
+    // Text has no key to hang a flag on, so this one substitution has to be a
+    // string — kept short so it cannot read as a value in its own right.
+    expect(toolText(response)).toContain(REDACTED_TEXT);
+    expect(response.structuredContent?.['password']).toBeNull();
+    expect(response.structuredContent?.['password_redacted']).toBe(true);
   });
 });
 
@@ -310,10 +425,13 @@ describe('notice is scrubbed like the rest of the result', () => {
  */
 describe('error bodies cannot carry credentials', () => {
   it('redacts a secret echoed back in a 422 body', async () => {
-    const server = testServer({
-      status: 422,
-      json: { errors: { asset_password: { password: SECRET_PASSWORD_VALUE } } },
-    });
+    const server = testServer(
+      {
+        status: 422,
+        json: { errors: { asset_password: { password: SECRET_PASSWORD_VALUE } } },
+      },
+      { allowPasswordWrite: true },
+    );
 
     const response = await server.call('hudu_create_password', {
       name: 'Firewall admin',

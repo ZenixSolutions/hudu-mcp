@@ -149,17 +149,69 @@ single response with no way to page it.
 **C3. `GET /asset_layouts` documents `page` but not `page_size`** — the only
 endpoint in the contract that paginates without a size control.
 
-**C4. A rack's contents cannot be listed.** `RackStorageItem` carries no
-reference to its rack: the string `rack_storage_id` does not appear anywhere in
-the contract, `rack_storage_role_id` is documented as "the unique ID of the rack
-storage role" and travels beside `rack_storage_role_name`, `_description` and
-`_hex_color` — a colour-coded classification, not the cabinet. No list filter
-scopes items to a rack, and no roles endpoint exists to resolve role ids
-either. **"What is mounted in rack 12?" is not answerable through the documented
-API.**
+**C4. A rack's contents cannot be listed. — Wrong. Corrected by observation
+(F8).**
+
+**What C4 claimed.** `RackStorageItem` carries no reference to its rack: the
+string `rack_storage_id` does not appear anywhere in the contract,
+`rack_storage_role_id` is documented as "the unique ID of the rack storage role"
+and travels beside `rack_storage_role_name`, `_description` and `_hex_color` — a
+colour-coded classification, not the cabinet. No list filter scopes items to a
+rack, and no roles endpoint exists to resolve role ids either. **Therefore "what
+is mounted in rack 12?" is not answerable through the documented API.** That
+conclusion was published here, in `docs/limitations.md`, in the README, in the
+0.1.0 changelog and in the descriptions of two shipped tools — one of which went
+further and instructed the caller to _say this API does not expose it_ rather
+than answer.
+
+**It is false.** `GET /rack_storages` and `GET /rack_storages/{id}` both return
+`front_items` and `rear_items` on every rack record: one entry per rack unit per
+face, each entry carrying the items mounted at that unit with `asset_id`,
+`asset_name` and `asset_url` on them. That is a complete per-unit elevation of
+the cabinet, front and rear, and reading it off a single `hudu_get_rack_storage`
+call answers the question C4 called unanswerable. The full shape is recorded in
+**F8**.
+
+**How that was established.** An external reviewer called the endpoint against
+Hudu 2.34.2 and built a full rack diagram out of the response — after the tool
+description had nearly talked them out of attempting a question the API answers
+in one request. It was not found by re-reading the contract, and it could not
+have been: the contract still does not mention these fields.
+
+**Why the original reasoning failed**, since the same mistake is available
+elsewhere in this file. Two compounding errors, neither of them a false premise:
+
+1. _It reasoned from the wrong record._ Every premise above is about
+   `RackStorageItem`, and every one of them is still true. The rack→items link
+   simply does not live on the item; it lives on the rack. "No link on A" was
+   generalised to "no link", without checking B.
+2. _It read a schema where only a call would do._ The `RackStorage` definition in
+   `api-docs.json` lists twelve scalar properties — `id`, `location_id`, `name`,
+   `description`, `max_wattage`, `starting_unit`, `height`, `width`,
+   `created_at`, `updated_at`, `discarded_at`, `company_id` — and declares no
+   arrays at all. **A schema that omits a field is indistinguishable from an API
+   that lacks it.** C1 and D5 failed the same way and were caught the same way,
+   by measurement. What made C4 worse than either is that its conclusion was
+   written into a tool description as an instruction to decline, which turns a
+   documentation defect into a refusal a user experiences.
+
+**What still stands.** The item→rack direction really is absent: there is no
+`rack_storage_id` on a rack storage item, no filter scopes
+`GET /rack_storage_items` to a rack, and no endpoint lists rack storage roles. So
+`hudu_list_rack_storage_items` remains an instance-wide list that cannot be
+grouped by cabinet, and is now described as what it is — "where is asset X
+mounted?" — rather than as a rack listing or as a gap. Going from an asset to its
+rack means either filtering that list by `asset_id`, or looking for the
+`asset_id` in the elevations returned by `hudu_list_rack_storages`.
 
 **C5. No locations endpoint exists**, yet networks and racks both carry a
 `location_id`. Those ids can be copied from an existing record and nothing else.
+
+> **Softened for racks by observation (F8).** A live rack record carries
+> undocumented `location_name` and `location_url` fields beside `location_id`, so
+> a rack's site can at least be named without a locations collection. The gap
+> itself is unchanged: nothing lists locations, and an arbitrary `location_id`
+> still cannot be resolved except by finding a record that already uses it.
 
 **C6. Exports cannot be retrieved.** `POST /exports` and `POST /s3_exports`
 start an export; this version documents no `GET /exports`, no
@@ -217,6 +269,16 @@ mapping (F7).
 **D4. Rack unit numbering is unexplained**: which end of the cabinet holds the
 lowest unit, whether `start_unit`–`end_unit` is inclusive, and what happens on
 overlap are all absent. No conflict response is documented for a double-booking.
+
+> **Answerable per instance, and there is an undocumented field about it (F8).**
+> Live rack records carry `descending_units`, which the contract does not define;
+> its name is about precisely the direction question. What it contains, and
+> which way round it reads, were **not** established here, so no tool description
+> claims a meaning for it — it is named as a hint to check, not as an answer.
+> What does settle the question on a given instance is the elevation: every slot
+> in `front_items`/`rear_items` carries its `number`, so comparing those against
+> hardware of a known height shows the convention in use. Inclusivity and overlap
+> remain undocumented.
 
 **D5. `IpAddress.status` legal values appear only in prose** — "Must be one of:
 unassigned, assigned, reserved, deprecated, dhcp, or slaac" — in the property
@@ -406,16 +468,53 @@ missing record names its resource, an unrouted path does not. The guidance in
 `src/api/errors.ts` now says to read the body, and no longer claims the two are
 identical.
 
-### F4. Hudu rejects an unknown query parameter outright
+### F4. An unknown query parameter is rejected by some endpoints and ignored by others. — Stated as global. It is per-endpoint.
 
+**What F4 claimed.** "Hudu rejects an unknown query parameter outright."
 `GET /networks?page=1` answers **`400 {"error":"page is not a valid filter
-parameter."}`**.
+parameter."}`**, and that one observation was written up as a property of the
+API. It was repeated in the `ResourceSpec` documentation in
+`src/tools/resource.ts`, which is the file a future author reads before adding a
+parameter speculatively.
 
-This confirms `paginated: false` on the five collections that document no
-paging (C2) — and it makes "send it anyway and let the server ignore it" an
-unsafe pattern here, because one unrecognised parameter fails the whole call.
-Recorded in the `ResourceSpec` documentation in `src/tools/resource.ts`, since
-that is where a future author would otherwise add a parameter speculatively.
+**The measurement is right and the generalisation is wrong.** Both endpoints
+were probed with a parameter no Hudu route could plausibly accept:
+
+| Request                      | Response                                                         |
+| ---------------------------- | ---------------------------------------------------------------- |
+| `GET /networks?zzz_bogus=1`  | **400** `{"error":"zzz_bogus is not a valid filter parameter."}` |
+| `GET /companies?zzz_bogus=1` | **200**, the same records as sending nothing at all              |
+
+So `/networks` rejects and `/companies` ignores. Neither is the API's
+behaviour; each is that endpoint's.
+
+**Why this is worth correcting rather than filing as pedantry.** The two
+failure modes are not equally visible, and the rule the original wording
+implied — "an unsupported parameter will announce itself" — only holds on the
+half of the API that rejects. Where an endpoint ignores, a filter that does
+nothing is indistinguishable from a filter that works, and the caller reads a
+full unfiltered list as a filtered one.
+
+That is exactly the situation on `/companies`, and it is why
+`hudu_list_companies` offers no `archived` argument. `GET /companies?archived=true`
+returns the same 22 records as `GET /companies` — the same 22 that omit the five
+archived companies on the instance. An `archived` filter added there would
+appear to work, would change nothing, and its absence would not be detectable
+from the response. The gap is therefore disclosed rather than filtered, as
+`ARCHIVED_EXCLUSION` in `src/tools/companies.ts` and the `completenessCaveat`
+that carries it onto every result.
+
+**What still stands.** `paginated: false` on the five collections that document
+no paging (C2) is confirmed, because `/networks` is one of them and it is a
+rejecting endpoint. And the rule the original entry was written to enforce —
+send only parameters the endpoint documents — survives the correction intact:
+one behaviour costs the call, the other costs the answer, and neither makes
+"send it anyway and let the server sort it out" safe.
+
+**How it was established.** Both requests were issued against the same live Hudu
+2.34.2 instance the rest of section F was measured on, with a read-only key.
+The correction is recorded here and in the `ResourceSpec` documentation, in
+place of the global claim.
 
 ### F5. A scope failure is 401, not 403
 
@@ -452,3 +551,75 @@ them. A client that refuses a legal value is worse than one that forwards an
 illegal one: the second costs a 422 from the party that actually knows the
 answer. Neither field is validated here now; both descriptions name the
 documented vocabulary, name the observed vocabulary, and say which is which.
+
+### F8. A rack record returns ten fields the `RackStorage` definition omits — including its entire contents
+
+Measured on Hudu **2.34.2**, on both `GET /rack_storages` and
+`GET /rack_storages/{id}`. This is the observation that makes **C4** wrong.
+
+| Field                    | What was seen                                             |
+| ------------------------ | --------------------------------------------------------- |
+| `front_items`            | Array of unit slots, one per rack unit, front face        |
+| `rear_items`             | Array of unit slots, one per rack unit, rear face         |
+| `descending_units`       | Present; contents not established here                    |
+| `utilization`            | Present; no published meaning or unit                     |
+| `power_draw_utilization` | Present; no published meaning or unit                     |
+| `power_utilization`      | Present; no published meaning or unit                     |
+| `serial_number`          | Present on the rack, not only on the assets mounted in it |
+| `asset_tag`              | Present on the rack                                       |
+| `location_name`          | Present; names what `location_id` points at (see C5)      |
+| `location_url`           | Present; a relative Hudu URL for the same location        |
+
+A slot in `front_items` or `rear_items`:
+
+```json
+{
+  "is_reserved": false,
+  "reserved_messsage": "",
+  "has_items": true,
+  "number": 1,
+  "items": [
+    {
+      "id": 92,
+      "side": "front",
+      "status": "used",
+      "asset_id": 231,
+      "asset_name": "Fortigate-40F",
+      "asset_url": "/a/3cbcff...",
+      "reserved_message": "",
+      "rack_storage_role_name": null,
+      "rack_storage_role_description": null,
+      "rack_storage_role_hex_color": null
+    }
+  ]
+}
+```
+
+Three things to note about that shape.
+
+**`reserved_messsage` is misspelled with three s's at slot level, while the
+nested item uses `reserved_message` with two.** Both spellings genuinely occur,
+in the same response, one nested inside the other. This client passes both
+through exactly as Hudu sends them and normalises neither: silently renaming a
+key would hide a vendor defect from the person who has to report it, and would
+break the moment Hudu fixed the spelling. The tool descriptions say which key
+sits at which level.
+
+**The mounted-item objects mirror `RackStorageItem` without being promised to.**
+`id`, `side`, `status`, `asset_id`, `asset_name`, `asset_url` and the three
+`rack_storage_role_*` fields all match that model's names, and `side` and
+`status` carry the observed string vocabularies from F7 rather than the integers
+the write schema documents (B7, D2). Nothing published says these are the same
+records as `/rack_storage_items` returns, so this server does not claim it.
+
+**Only the four fields the write schema documents are writable here.** Nothing in
+this table is sent by any tool: `front_items` and `rear_items` are not in the
+create or update body schema, and mounting hardware is still
+`hudu_create_rack_storage_item`. These fields are read surface, and they are
+described as one instance's observed shape rather than as a contract — a
+different Hudu version may not return them.
+
+The general lesson is the one C4 states: reading a definition tells you what a
+vendor documented, never what an endpoint returns. Where a "the API cannot do X"
+claim rests on the absence of a field in `api-docs.json`, the claim is unverified
+until something calls the endpoint.

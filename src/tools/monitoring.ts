@@ -56,6 +56,32 @@ const updatedAtDescription =
   'everything changed since that moment, ",2026-01-01T00:00:00Z" everything changed before it. ' +
   'A bare timestamp with no comma matches that exact moment.';
 
+/**
+ * How `name` and `search` differ, which the captured contract never says.
+ *
+ * Measured on Hudu 2.34.2 against `GET /assets`: `name: "UDM Pro"` matched the
+ * whole name case-insensitively and excluded "UDM Pro Max", while `search:
+ * "UDM"` matched as a substring and returned both. The measurement is from the
+ * asset list rather than `/websites`, so it is offered as the behaviour to
+ * expect rather than as a fact established here. A website's name is its URL,
+ * which makes an exact-match `name` filter especially easy to miss with —
+ * "contoso.com" is not the stored "https://portal.contoso.com".
+ */
+const NAME_MATCHING =
+  'Matching, observed on Hudu 2.34.2 and documented nowhere: a `name` filter matched the whole ' +
+  'value case-insensitively rather than as a substring — on the asset list, `name: "UDM Pro"` ' +
+  'excluded "UDM Pro Max". That is one instance rather than a published contract, so treat it ' +
+  'as a working assumption. It bites here because the stored name is a full URL: send exactly ' +
+  'what the record holds, or use `search` for a hostname fragment. An empty result means ' +
+  'nothing matched the name in full, not that the site is unmonitored.';
+
+const SEARCH_MATCHING =
+  'Matching, observed on Hudu 2.34.2 and documented nowhere: `search` matched as a substring ' +
+  'where `name` matched the whole value — on the asset list, `search: "UDM"` returned both "UDM ' +
+  'Pro" and "UDM Pro Max", while `name: "UDM Pro"` returned only the first. That is one ' +
+  'instance rather than a published contract, but it is the reason to reach for this parameter ' +
+  'when you hold a hostname rather than the full URL a website record is named after.';
+
 /* ------------------------------------------------------------------------- *
  * Websites
  * ------------------------------------------------------------------------- */
@@ -141,8 +167,14 @@ export const websitesSpec: ResourceSpec = {
     search: z
       .string()
       .optional()
-      .describe('Broad text search across website fields. The best first filter for a hostname.'),
-    name: z.string().optional().describe('Match against the website name — usually its URL.'),
+      .describe(
+        'Broad text search across website fields. The best first filter for a hostname. ' +
+          SEARCH_MATCHING,
+      ),
+    name: z
+      .string()
+      .optional()
+      .describe(`Match against the website name — usually its URL. ${NAME_MATCHING}`),
     slug: z.string().optional().describe('URL slug, if you already know it.'),
     updated_at: z.string().optional().describe(updatedAtDescription),
   },

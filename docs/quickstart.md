@@ -14,8 +14,11 @@ In Hudu, go to **Admin → Basic Information → API Keys** and create a key.
 Hudu fixes a key's scope at creation and does not let you change it afterwards.
 For this walkthrough, create the key with **password access off, destructive
 actions off and export capability off**. That combination is enough for every
-step below, and it means nothing you do in the next few minutes can read a
-credential or delete a record — regardless of what you or a model asks for.
+step below, and it means nothing you do in the next few minutes can read, alter
+or delete a credential or delete a record — regardless of what you or a model
+asks for. Note that Hudu's password scope is one switch covering every REST
+action on passwords; this server splits reading from writing across two gates,
+but the key does not.
 
 Copy the key somewhere your MCP client can read it from. It is shown once.
 
@@ -30,11 +33,30 @@ npx -y @zenixsolutions/hudu-mcp --check
 Expected output:
 
 ```
-hudu-mcp: configuration is valid.
+hudu-mcp: --check: reached Hudu 2.34.2 at https://hudu.example.com. GET /api_info
+succeeded, so the base URL, the API key and network reachability are all confirmed.
 ```
 
-`--check` validates the environment. It does not contact Hudu. To confirm the
-key and URL actually work, the first tool call in step 4 is the test.
+`--check` calls `GET /api_info` with the key you gave it, so it tells you the
+key works rather than only that it is present. A key that has been revoked or
+rotated fails here, in one second, instead of turning into a run of empty lists
+later. On failure it prints what went wrong and what to do about it, and exits
+non-zero: 78 when the environment is wrong, 69 when the environment is fine and
+Hudu refused or could not be reached.
+
+What it cannot tell you is the key's **scope**. Password access, destructive
+actions and exports are fixed when the key is created, and `/api_info` needs
+none of them, so a key that passes here can still answer `401` on
+`/asset_passwords`.
+
+In a container build or anywhere without network access, add `--offline` to
+validate the configuration syntax alone:
+
+```bash
+HUDU_BASE_URL=https://hudu.example.com HUDU_API_KEY=... hudu-mcp --check --offline
+```
+
+That mode says plainly that nothing was verified, because nothing was.
 
 Now look at what would be registered:
 
@@ -158,9 +180,10 @@ Run `--list-tools` with the same environment the client uses. The `Withheld:`
 section names each absent tool and the variable that would register it:
 
 ```
-Withheld: 19
+Withheld: 22
   hudu_delete_company: HUDU_ALLOW_DESTRUCTIVE is not set.
   ...
+  hudu_create_password: HUDU_ALLOW_PASSWORD_WRITE is not set.
   hudu_reveal_password: HUDU_ALLOW_PASSWORD_REVEAL is not set.
   hudu_start_company_export: HUDU_ALLOW_EXPORTS is not set.
 ```

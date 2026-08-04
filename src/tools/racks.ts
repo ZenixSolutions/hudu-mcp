@@ -7,13 +7,28 @@
  * volumes or shares, so every description below spends its opening sentence
  * saying what the resource physically is.
  *
- * The second trap is what the specification does not contain. The item schema
- * carries no reference to the rack it sits in — there is no `rack_storage_id`
- * field anywhere in the API, and no list filter scopes items to a rack — so
- * "what is mounted in rack 12?" has no documented answer here. Article IV
- * forbids closing that gap with a guess, so the tools state it instead: the
- * `rack_storage_role_id` field is documented as a *role*, and is described as
- * one, rather than being presented as the missing rack link.
+ * The second thing to know is where a rack's contents are, because the captured
+ * contract hides it. `GET /rack_storages` and `GET /rack_storages/{id}` both
+ * return `front_items` and `rear_items` on every rack: one entry per rack unit
+ * per face, each entry carrying whatever is mounted at that unit, with
+ * `asset_id` and `asset_name` on it. That is a complete per-unit elevation, and
+ * it answers "what is mounted in rack 12?" directly — call
+ * hudu_get_rack_storage and read the record.
+ *
+ * These descriptions used to say the opposite, at length, and
+ * hudu_list_rack_storage_items told callers to refuse the question. The reason
+ * is worth keeping in view: the `RackStorage` definition in
+ * docs/reference/api-docs.json lists twelve scalar properties and declares no
+ * arrays at all, so reading the schema produces exactly the wrong answer. The
+ * reasoning also started from the wrong record — every true premise it used was
+ * about `RackStorageItem`, and the link lives on the rack, not on the item. See
+ * spec-defects.md C4, rewritten as a correction, and F8 for the observed shape.
+ *
+ * What is still true is the item→rack direction: a rack storage item carries no
+ * `rack_storage_id`, no list filter scopes items to a rack, and
+ * `rack_storage_role_id` is a colour-coded *role* rather than the cabinet — so
+ * the instance-wide item list cannot be grouped by rack, and is described here
+ * as what it is rather than as a rack listing.
  */
 
 import { z } from 'zod';
@@ -43,6 +58,51 @@ const undocumentedUnitNote =
   'instance and with nothing else.';
 
 /**
+ * The per-unit elevation, described concretely enough to be read without guessing.
+ *
+ * Said once and attached to the rack `summary`, so it reaches the list, get,
+ * create and update descriptions alike — every one of those tools returns a
+ * rack record, and this is the part of that record no schema declares.
+ */
+const elevationNote =
+  'A rack record also carries its own contents. `front_items` and `rear_items` are arrays with ' +
+  'one entry per rack unit — the front face and the rear face of the same cabinet — and each ' +
+  'entry is a slot: `number` is the unit number, `has_items` says whether anything is mounted ' +
+  'there, `is_reserved` and `reserved_messsage` describe a held slot, and `items` is the array ' +
+  'of things mounted at that unit. Each entry in `items` carries `id`, `side`, `status`, ' +
+  '`asset_id`, `asset_name`, `asset_url`, `reserved_message` and the three ' +
+  '`rack_storage_role_*` display fields. Reading `front_items` and `rear_items` off one rack ' +
+  'record is the way to answer "what is in rack 12?", and it is enough to lay the cabinet out ' +
+  'unit by unit.\n\n' +
+  '`asset_id` on a mounted item is the link onward: pass it to hudu_get_asset for the device ' +
+  'record with its serial, model and custom fields, or to hudu_list_assets to resolve names.\n\n' +
+  'Two spellings of one field are real and are passed through exactly as Hudu sends them: the ' +
+  "slot uses `reserved_messsage`, with three s's, while the mounted item inside it uses " +
+  '`reserved_message`, with two. This client does not normalise either, so read the key that ' +
+  'is actually on the object you are looking at rather than the one you expect.\n\n' +
+  'The elevation is in no published schema: the `RackStorage` definition lists scalar ' +
+  'properties only and declares no arrays, so `front_items`, `rear_items` and the slot shape ' +
+  'above are reported from a live Hudu 2.34.2 instance rather than from the contract ' +
+  '(docs/reference/spec-defects.md C4 and F8). Read the elevation off the record you were ' +
+  'given rather than assuming this shape holds on another version.';
+
+/**
+ * Fields the live rack record carries that the `RackStorage` definition omits.
+ *
+ * Named without meanings attached: what they contain was observed, what they
+ * mean is unpublished, and inventing the second from the first is the mistake
+ * that produced C4.
+ */
+const undocumentedRackFieldsNote =
+  'A live 2.34.2 rack record carries several more fields the contract does not define at all: ' +
+  '`descending_units`, `utilization`, `power_draw_utilization`, `power_utilization`, ' +
+  '`serial_number`, `asset_tag`, `location_name` and `location_url`. Hudu publishes no meaning, ' +
+  'type or value set for any of them, so treat each as a value to read rather than one to ' +
+  'interpret. `location_name` and `location_url` are the useful pair in practice: this API ' +
+  'exposes no locations endpoint (C5), and they name the location that `location_id` points ' +
+  'at without one.';
+
+/**
  * Everything a caller needs to know before writing a unit position, said once.
  *
  * Both ends of the range need the whole warning: a caller who reads only
@@ -51,14 +111,18 @@ const undocumentedUnitNote =
  */
 const unitRangeNote =
   'Two properties of this range are not documented, and assuming either will place hardware ' +
-  'in the wrong slot. First, direction: the API never says which physical end of the cabinet ' +
-  'holds the lowest-numbered unit, so bottom-up and top-down are equally consistent with the ' +
-  'spec. Second, inclusivity: it does not say whether a 2U device starting at unit 10 ends at ' +
-  '11 or at 12. Read an existing item from the same rack with hudu_list_rack_storage_items, ' +
-  'compare it against hardware whose height you already know, and follow whatever convention ' +
-  'that instance uses. Overlap is undocumented too — no conflict response is published for ' +
-  'these endpoints, and create and update document only 422 "Unable to process request" — so ' +
-  'do not rely on Hudu refusing to double-book a unit.';
+  'in the wrong slot. First, direction: the contract never says which physical end of the ' +
+  'cabinet holds the lowest-numbered unit, so bottom-up and top-down are equally consistent ' +
+  'with it. Second, inclusivity: it does not say whether a 2U device starting at unit 10 ends ' +
+  'at 11 or at 12. Settle both against the rack itself rather than against a convention — ' +
+  'call hudu_get_rack_storage and read `front_items`/`rear_items`, which lay the cabinet out ' +
+  'one slot per unit and show where existing hardware of a height you already know actually ' +
+  'sits. That same record carries an undocumented `descending_units` field whose name points ' +
+  'at the direction question; Hudu publishes nothing about it, and this server has not ' +
+  'established what it contains or which way round it reads, so use it as a hint to check ' +
+  'against the elevation rather than as an answer. Overlap is undocumented too — no conflict ' +
+  'response is published for these endpoints, and create and update document only 422 "Unable ' +
+  'to process request" — so do not rely on Hudu refusing to double-book a unit.';
 
 const rackWritableFields = {
   name: z
@@ -84,7 +148,9 @@ const rackWritableFields = {
     .describe(
       'Numeric id of the location the rack physically stands in. This API publishes no ' +
         'locations endpoint at all, so there is nothing to look the id up in — take it from an ' +
-        'existing rack at the same site via hudu_list_rack_storages.',
+        'existing rack at the same site via hudu_list_rack_storages. Live rack records echo ' +
+        'an undocumented `location_name` and `location_url` beside the id, which is how you ' +
+        'tell which site an id refers to without a locations collection.',
     ),
   height: z
     .number()
@@ -93,7 +159,9 @@ const rackWritableFields = {
     .describe(
       'How tall the rack is. The spec says only "the height of the rack storage" and gives no ' +
         'unit; rack height is conventionally a count of rack units, but the API does not ' +
-        'confirm that. Read an existing rack and compare it against known hardware before ' +
+        'confirm that. Read an existing rack with hudu_get_rack_storage and compare `height` ' +
+        "against the number of slots in that record's `front_items` — the elevation has one " +
+        'entry per unit, so the two are directly comparable on your own instance — before ' +
         'trusting the interpretation.',
     ),
   width: z.number().int().optional().describe(`How wide the rack is. ${undocumentedUnitNote}`),
@@ -128,8 +196,10 @@ export const rackStoragesSpec: ResourceSpec = {
   summary:
     'A rack storage is a physical rack — a cabinet in a server room — owned by a company and ' +
     'standing at a location, with a height, a width, a starting unit number and a maximum ' +
-    'wattage. It is the container only: the equipment mounted in it is modelled separately as ' +
-    'rack storage items, via the hudu_*_rack_storage_item tools.',
+    'wattage. Equipment mounted in it is also modelled separately, as rack storage items ' +
+    'reachable through the hudu_*_rack_storage_item tools, but you do not need those to see ' +
+    "one rack's contents.\n\n" +
+    `${elevationNote}\n\n${undocumentedRackFieldsNote}`,
   listNotes:
     "Filter by `company_id` for one customer's racks and `location_id` for one site. `height`, " +
     '`min_width` and `max_width` filter on the rack dimensions, whose units the API never ' +
@@ -137,6 +207,13 @@ export const rackStoragesSpec: ResourceSpec = {
     'instance.\n\n' +
     'No name or free-text search filter is documented. To find a rack by name, list the ' +
     "company's racks and match the `name` field yourself.\n\n" +
+    'Every rack in this list carries its full `front_items`/`rear_items` elevation, so an ' +
+    'unfiltered list of a large estate is a large response and is the case most likely to be ' +
+    'cut by the output budget — and a budget cut here drops whole racks, not slots. When you ' +
+    'want the inventory of cabinets rather than their contents, pass `fields` without the two ' +
+    'item arrays, e.g. ["id","name","company_id","location_name","height"]. When you want one ' +
+    "rack's contents, call hudu_get_rack_storage with its id instead: that record is returned " +
+    'whole, with the elevation intact.\n\n' +
     noPagingNote,
   paginated: false,
   filters: {
@@ -181,7 +258,9 @@ export const rackStoragesSpec: ResourceSpec = {
   deleteImpact:
     'Deletes the rack. What becomes of the rack storage items mounted in it is not documented ' +
     '— whether Hudu removes them with the rack or leaves them orphaned is unpublished, so deal ' +
-    'with them deliberately first if it matters. Rack records carry a `discarded_at` ' +
+    'with them deliberately first if it matters. Read the rack with hudu_get_rack_storage ' +
+    'before deleting it: `front_items` and `rear_items` are a per-unit record of exactly what ' +
+    'was mounted, and after the delete there is no way to reconstruct it. Rack records carry a `discarded_at` ' +
     'timestamp, which suggests Hudu soft-deletes internally, but no archive or restore ' +
     'endpoint is documented for racks, so nothing here is recoverable through this API.',
 };
@@ -298,19 +377,26 @@ export const rackStorageItemsSpec: ResourceSpec = {
     'A rack storage item is one thing mounted in a rack: it points at the Hudu asset it ' +
     'represents, occupies the units from `start_unit` to `end_unit` on one `side` of the rack, ' +
     'and carries its own power figures. The rack itself is a rack storage — use the ' +
-    'hudu_*_rack_storage tools for the cabinet.',
+    "hudu_*_rack_storage tools for the cabinet, and hudu_get_rack_storage for one rack's " +
+    'contents, which arrive on the rack record as a per-unit elevation.',
   listNotes:
-    'Read this before answering a question about a specific rack: the API documents no way to ' +
-    'list the items in one. The item schema has no rack field, and none of the filters scope ' +
-    'to a rack — `rack_storage_role_id` filters by role, which is a classification, not the ' +
-    'cabinet. The documented filters are role, asset, start_unit, end_unit, status, side and ' +
-    'the two timestamps, all of them instance-wide. If you are asked what is in rack 12, say ' +
-    "this API does not expose it rather than presenting an unscoped list as that rack's " +
-    'contents. It is worth reading one record with hudu_get_rack_storage_item to see whether ' +
-    'your Hudu version returns a rack reference the published schema omits, but do not assume ' +
-    'one is there.\n\n' +
-    'To go the other way — from a device to where it is racked — filter by `asset_id`, which ' +
-    'is the one filter that ties an item to something you can identify elsewhere in Hudu.\n\n' +
+    'To see what is in a particular rack, use hudu_get_rack_storage, not this tool. That ' +
+    'record carries `front_items` and `rear_items` — one slot per rack unit on each face, ' +
+    'each slot listing the items mounted there with their `asset_id` and `asset_name` — which ' +
+    'is a direct, complete answer to "what is in rack 12?".\n\n' +
+    'This tool is the instance-wide view of mounted items: every rack storage item on the ' +
+    'instance, optionally filtered by `asset_id`, `status`, `side`, `start_unit`, `end_unit`, ' +
+    '`rack_storage_role_id` or the two timestamps. Its best use is "where is asset X mounted?" ' +
+    '— filter by `asset_id` and read the unit range and side off the result. It is also how ' +
+    'you survey one class of mounting across the estate, e.g. every item whose `status` is ' +
+    '"reserved".\n\n' +
+    'What it cannot do is group its own results by cabinet. A rack storage item carries no ' +
+    'rack id — `rack_storage_id` appears nowhere in this API — and no filter scopes items to a ' +
+    'rack; `rack_storage_role_id` is a colour-coded role, a classification of the mounted ' +
+    'thing, not the cabinet it sits in. So an unfiltered list here is a flat instance-wide set ' +
+    "with no cabinet on it, and it must never be presented as one rack's contents. When you " +
+    'need the rack an item belongs to, work from the rack side: list racks with ' +
+    'hudu_list_rack_storages and look for the `asset_id` in their elevations.\n\n' +
     noPagingNote,
   paginated: false,
   titleField: 'asset_name',
@@ -321,8 +407,10 @@ export const rackStorageItemsSpec: ResourceSpec = {
       .positive()
       .optional()
       .describe(
-        'Return only items holding this rack storage role. A role is a classification of the ' +
-          'mounted item, not the rack it is in — this does not list the contents of a rack.',
+        'Return only items holding this rack storage role. A role is a colour-coded ' +
+          'classification of the mounted item, not the rack it is in — filtering on it selects ' +
+          "a kind of mounting across every cabinet. For one rack's contents, call " +
+          'hudu_get_rack_storage and read the elevation on the record.',
       ),
     asset_id: z
       .number()

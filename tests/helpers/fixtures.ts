@@ -30,6 +30,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     readOnly: false,
     allowDestructive: false,
     allowPasswordReveal: false,
+    allowPasswordWrite: false,
     allowExports: false,
     requestTimeoutMs: 30_000,
     maxConcurrency: 4,

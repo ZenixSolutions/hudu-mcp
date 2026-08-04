@@ -73,6 +73,16 @@ export interface ToolAnnotations {
   readonly openWorldHint: boolean;
 }
 
+/**
+ * Map a class onto the MCP annotation hints.
+ *
+ * `destructiveHint` is read against the protocol's own definition: true means
+ * the tool **may perform destructive updates**, false means it performs **only
+ * additive** ones. That is a wider claim than "deletes something". A client that
+ * prompts the user based on annotations is deciding what to ask about from these
+ * four booleans, so `destructiveHint: false` is a positive assertion that
+ * nothing existing can be lost — and only Read and Create can honestly make it.
+ */
 export function annotationsFor(operationClass: OperationClass): ToolAnnotations {
   switch (operationClass) {
     case OperationClass.Read:
@@ -83,6 +93,9 @@ export function annotationsFor(operationClass: OperationClass): ToolAnnotations 
         openWorldHint: true,
       };
     case OperationClass.Create:
+      // Genuinely additive: it brings a new record into existence and touches
+      // no existing one. This is the only non-Read class that can claim
+      // `destructiveHint: false` under the protocol's definition of it.
       return {
         readOnlyHint: false,
         destructiveHint: false,
@@ -90,18 +103,25 @@ export function annotationsFor(operationClass: OperationClass): ToolAnnotations 
         openWorldHint: true,
       };
     case OperationClass.Update:
-      // Idempotent in the HTTP sense: applying the same PUT twice lands in the
-      // same state. It still overwrites, which is why it is not a Read.
+      // Destructive *and* idempotent, which is the case that shows the two are
+      // orthogonal rather than opposites. Destructive because a PUT replaces the
+      // prior value of every field it carries, and that value is not recoverable
+      // through this API — an update is how documentation gets silently
+      // overwritten. Idempotent because replaying the same PUT lands in the same
+      // state; repeating it does no *further* harm, which is a statement about
+      // retry safety and not about what the first call cost.
       return {
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: true,
         openWorldHint: true,
       };
     case OperationClass.Admin:
+      // Bulk export moves a copy of tenant data outside the tenant, which cannot
+      // be undone by deleting anything inside it. Nothing about that is additive.
       return {
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: false,
         openWorldHint: true,
       };

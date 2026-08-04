@@ -31,32 +31,79 @@ export type ResponseFormat = (typeof ResponseFormat)[keyof typeof ResponseFormat
  * thing, which is worse than reporting nothing. What we can say honestly is
  * whether the page came back full, which is the actual signal that more may
  * exist.
+ *
+ * One naming decision is worth stating outright, because the two numbers used
+ * to blur together under truncation: **`count` is always the number of records
+ * in `items`**, and nothing else. Before the character budget runs that is also
+ * the number Hudu returned for the page; after it runs the two differ, and the
+ * page figure is reported separately as `records_on_page` rather than left
+ * hiding inside `count`. `page_size` is the *requested* page size and never
+ * changes, so `page_was_full: true` alongside a smaller `count` is not a
+ * contradiction — it means the page was full and this response does not carry
+ * all of it.
  */
 export interface PageInfo {
   readonly page: number;
   readonly page_size: number;
+  /** Number of records in `items`. Never the number Hudu returned for the page. */
   readonly count: number;
-  /** True when `count === page_size`, i.e. another page may exist. */
+  /** True when the page came back full, i.e. another page may exist. */
   readonly page_was_full: boolean;
   readonly next_page: number | null;
+  /** False when the endpoint documents no `page` parameter at all. */
+  readonly pagination_supported: boolean;
+  /**
+   * False when the endpoint pages but documents no `page_size`.
+   *
+   * `GET /asset_layouts` is the only such endpoint in the captured contract, and
+   * it matters exactly once: in the truncation remedies. Advising a caller to
+   * lower a `page_size` that the endpoint rejects sends them to fix the response
+   * in the one way that cannot work.
+   */
+  readonly page_size_supported: boolean;
   /** Plain-language statement of what is and is not known. */
   readonly pagination_note: string;
 }
 
-export function pageInfo(page: number, pageSize: number, count: number): PageInfo {
-  const full = count === pageSize && count > 0;
+export function pageInfo(
+  page: number,
+  pageSize: number,
+  count: number,
+  options: { pageSizeSupported?: boolean } = {},
+): PageInfo {
+  const pageSizeSupported = options.pageSizeSupported !== false;
+
+  // Without a requested size there is nothing to compare the count against, so
+  // whether the page came back full is simply unknown. Erring towards "another
+  // page may exist" is the safe direction: the cost of an extra request that
+  // returns nothing is one call, and the cost of the other error is an agent
+  // reporting a partial inventory as the whole thing.
+  const full = pageSizeSupported ? count === pageSize && count > 0 : count > 0;
+
   return {
     page,
     page_size: pageSize,
     count,
     page_was_full: full,
     next_page: full ? page + 1 : null,
-    pagination_note: full
-      ? `This page is full (${count} of a requested ${pageSize}), so more records probably ` +
-        `exist. Request page ${page + 1} to continue. The Hudu API returns no total count, ` +
-        'so the number of remaining records is not knowable without paging through.'
-      : `Returned ${count} record(s) against a page size of ${pageSize}. A partial page means ` +
-        'this is the last page for the current filters.',
+    pagination_supported: true,
+    page_size_supported: pageSizeSupported,
+    pagination_note: !pageSizeSupported
+      ? `Returned ${count} record(s) on page ${page}. This Hudu endpoint documents \`page\` but ` +
+        'no `page_size`, so no page size was requested and the server chose its own — the ' +
+        `page_size above reports the ${count} record(s) this page actually held, not a size this ` +
+        'client asked for, and there is no page_size parameter to lower. Whether the page came ' +
+        'back full is therefore not knowable from this response' +
+        (count > 0
+          ? `: request page ${page + 1} to find out, and read an empty page as the end of the ` +
+            'data.'
+          : '. An empty page means there is nothing further to read.')
+      : full
+        ? `This page is full (${count} of a requested ${pageSize}), so more records probably ` +
+          `exist. Request page ${page + 1} to continue. The Hudu API returns no total count, ` +
+          'so the number of remaining records is not knowable without paging through.'
+        : `Returned ${count} record(s) against a page size of ${pageSize}. A partial page means ` +
+          'this is the last page for the current filters.',
   };
 }
 
@@ -76,6 +123,8 @@ export function unpaginatedInfo(count: number): PageInfo {
     count,
     page_was_full: false,
     next_page: null,
+    pagination_supported: false,
+    page_size_supported: false,
     pagination_note:
       `Returned ${count} record(s). This Hudu endpoint does not support pagination at all — ` +
       'there is no page or page_size parameter and no further page to request, so this is the ' +
@@ -87,7 +136,139 @@ export function unpaginatedInfo(count: number): PageInfo {
 export interface ListEnvelope<T> extends PageInfo {
   readonly items: readonly T[];
   readonly truncated?: boolean;
+  /**
+   * How many records Hudu returned for this page, present only when fewer were
+   * emitted. `count` is the number in `items`; this is the number the page held.
+   */
+  readonly records_on_page?: number;
   readonly truncation_note?: string;
+  /**
+   * A standing limit on what this list can contain at all, independent of paging.
+   *
+   * Set by {@link withCompletenessCaveat}. It is also appended to
+   * `pagination_note`, because that is the field a caller reads before deciding
+   * a list is the whole picture — and it is carried as its own key so that
+   * regenerating the note under truncation cannot silently drop it.
+   */
+  readonly completeness_caveat?: string;
+}
+
+/**
+ * Append a standing caveat about what a list can never contain.
+ *
+ * `pagination_note` answers "is there another page?", and for most resources
+ * that is the whole question. For a few it is not: `GET /companies` omits
+ * archived companies and offers no parameter to include them, so a note saying
+ * "this is the last page for the current filters" is true about the paging and
+ * misleading about the universe. The caveat rides on the note rather than
+ * beside it so that a caller reading only that field still sees it.
+ */
+export function withCompletenessCaveat<T>(
+  envelope: ListEnvelope<T>,
+  caveat: string,
+): ListEnvelope<T> {
+  const { items, ...meta } = envelope;
+  return {
+    ...meta,
+    pagination_note: `${meta.pagination_note} ${caveat}`,
+    completeness_caveat: caveat,
+    items,
+  };
+}
+
+/**
+ * Restate a pagination note in terms of what was actually emitted.
+ *
+ * The note is generated before the character budget runs, so after a cut it
+ * describes a response that was never sent — Hudu's figure for the page, plus,
+ * on a partial page, the claim that the set is complete. Left alone that turns
+ * the truncation notice into a contradiction of the metadata above it, and a
+ * reader who believes the note reports a partial inventory as whole.
+ */
+function truncatedPaginationNote<T>(
+  envelope: ListEnvelope<T>,
+  onPage: number,
+  emitted: number,
+): string {
+  const dropped = onPage - emitted;
+  const core =
+    `${emitted} of the ${onPage} record(s) Hudu returned are in \`items\`; ${dropped} were ` +
+    "dropped to fit this client's output budget, so this is a partial answer.";
+
+  const body = envelope.pagination_supported
+    ? `Page ${envelope.page}: ${core} ` +
+      (envelope.page_was_full
+        ? `The page itself came back full (${onPage} of a requested ${envelope.page_size}), so ` +
+          `more records probably exist beyond it — but page ${envelope.next_page ?? envelope.page + 1} ` +
+          `resumes after all ${onPage} records on this page, not after the ${emitted} shown here, ` +
+          `so paging on alone will never show the ${dropped} dropped record(s). `
+        : `No further page follows this one, so the ${dropped} dropped record(s) are not ` +
+          'reachable by paging at all. ') +
+      (envelope.page_size_supported
+        ? 'Re-request with a smaller page_size, narrower filters, or a shorter `fields` list to '
+        : 'This endpoint documents no page_size, so there is none to lower: re-request with ' +
+          'narrower filters or a shorter `fields` list to ') +
+      'see them. The Hudu API returns no total count, so what lies beyond this page is not ' +
+      'knowable without paging through.'
+    : `${core} This Hudu endpoint does not support pagination at all — there is no page or ` +
+      'page_size parameter and no further page to request — so narrowing the filters is the ' +
+      `only way to see the ${dropped} dropped record(s), and where the endpoint offers no ` +
+      'narrow enough filter they cannot be reached at all. Do not describe this response as a ' +
+      'full inventory.';
+
+  return envelope.completeness_caveat === undefined
+    ? body
+    : `${body} ${envelope.completeness_caveat}`;
+}
+
+const truncationNote = <T>(
+  envelope: ListEnvelope<T>,
+  onPage: number,
+  emitted: number,
+  limit: number,
+): string =>
+  `Response truncated from ${onPage} to ${emitted} record(s) to stay within the ${limit}-` +
+  'character response budget. This is a client-side cut, not the end of the data: ' +
+  (envelope.pagination_supported
+    ? envelope.page_size_supported
+      ? 'lower page_size, add filters, or request specific ids to see the rest.'
+      : 'this endpoint documents no page_size, so add filters or request specific ids to see ' +
+        'the rest.'
+    : 'this endpoint has no pagination, so narrowing the filters is the only way to reach the ' +
+      `${onPage - emitted} record(s) that were dropped.`);
+
+/**
+ * Assemble a truncated envelope.
+ *
+ * Key order here is part of the contract, not an accident. `truncated`,
+ * `records_on_page` and `truncation_note` are placed *before* `items` because
+ * clients clip long tool results, and a correction that sits twenty kilobytes
+ * below the claim it contradicts is not a correction. A clipped read must be
+ * able to see that the response is partial before it sees the records that make
+ * it look whole.
+ */
+function truncatedEnvelope<T>(
+  envelope: ListEnvelope<T>,
+  items: readonly T[],
+  onPage: number,
+  limit: number,
+): ListEnvelope<T> {
+  const emitted = items.length;
+  // `items` is pulled out and re-added last so that everything below stays
+  // ahead of it; `count` and `pagination_note` keep their original positions
+  // because assigning an existing key does not move it.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { items: _items, ...meta } = envelope;
+
+  return {
+    ...meta,
+    count: emitted,
+    pagination_note: truncatedPaginationNote(envelope, onPage, emitted),
+    truncated: true,
+    records_on_page: onPage,
+    truncation_note: truncationNote(envelope, onPage, emitted, limit),
+    items,
+  };
 }
 
 /**
@@ -95,32 +276,28 @@ export interface ListEnvelope<T> extends PageInfo {
  *
  * Halving rather than trimming one at a time: a single oversized record would
  * otherwise cost one serialisation pass per item removed.
+ *
+ * The loop measures the envelope it is actually going to return, notes and all,
+ * rather than the one it started from. Measuring the input and then adding a
+ * few hundred characters of explanation to the output is how a budget gets
+ * quietly overshot by exactly the text that was supposed to make the cut safe.
  */
 export function applyCharacterBudget<T>(
   envelope: ListEnvelope<T>,
   limit = CHARACTER_LIMIT,
 ): ListEnvelope<T> {
   let items = envelope.items;
-  let serialised = JSON.stringify({ ...envelope, items });
 
-  if (serialised.length <= limit) return envelope;
+  if (JSON.stringify({ ...envelope, items }).length <= limit) return envelope;
 
-  const original = items.length;
-  while (items.length > 1 && serialised.length > limit) {
+  const onPage = items.length;
+  let truncated = truncatedEnvelope(envelope, items, onPage, limit);
+  while (items.length > 1 && JSON.stringify(truncated).length > limit) {
     items = items.slice(0, Math.max(1, Math.floor(items.length / 2)));
-    serialised = JSON.stringify({ ...envelope, items });
+    truncated = truncatedEnvelope(envelope, items, onPage, limit);
   }
 
-  return {
-    ...envelope,
-    items,
-    count: items.length,
-    truncated: true,
-    truncation_note:
-      `Response truncated from ${original} to ${items.length} record(s) to stay within the ` +
-      `${limit}-character response budget. This is a client-side cut, not the end of the ` +
-      'data: lower page_size, add filters, or request specific ids to see the rest.',
-  };
+  return truncated;
 }
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -209,8 +386,15 @@ export function renderListMarkdown<T>(
 ): string {
   const lines: string[] = [`# ${title}`, ''];
   lines.push(
-    `Page ${envelope.page} · ${envelope.count} record(s) · page size ${envelope.page_size}`,
+    envelope.records_on_page === undefined
+      ? `Page ${envelope.page} · ${envelope.count} record(s) · page size ${envelope.page_size}`
+      : `Page ${envelope.page} · ${envelope.count} of ${envelope.records_on_page} record(s) ` +
+          `shown · page size ${envelope.page_size}`,
   );
+  // Above the records, not below them. A reader who stops early — or a client
+  // that clips the response — must meet the correction before the list that
+  // looks complete without it.
+  if (envelope.truncation_note) lines.push('', `**Truncated.** ${envelope.truncation_note}`);
   lines.push('');
 
   if (envelope.count === 0) {
@@ -237,7 +421,6 @@ export function renderListMarkdown<T>(
   }
 
   lines.push(envelope.pagination_note);
-  if (envelope.truncation_note) lines.push('', envelope.truncation_note);
   return withTruncationNote(lines);
 }
 

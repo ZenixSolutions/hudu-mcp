@@ -21,6 +21,17 @@ almost every task starts the same way:
 `search` matches broadly and is the right first filter for a name; `name` matches
 the name field specifically. Take the `id` from the result and carry it forward.
 
+One warning belongs here rather than three sections down: **`hudu_list_companies`
+does not return archived companies, and Hudu offers no parameter that makes it.**
+On the instance this was measured against, 27 companies existed, the tool listed
+22, and 64 assets belonged to the five it left out. Sending `archived` does not
+help — `/companies` ignores query parameters it does not recognise instead of
+rejecting them, so the filter would look like it worked. If you meet a
+`company_id` that no listing accounts for, pass it to `hudu_get_company`, which
+does return archived records. Never conclude from this list alone that a company
+does not exist, and never quote its length as the number of companies on the
+instance.
+
 Two habits are worth forming early:
 
 - **Use `fields` to project.** Every list tool takes `fields` and returns only
@@ -53,6 +64,7 @@ as complete. What it emits instead:
   "count": 25,
   "page_was_full": true,
   "next_page": 2,
+  "pagination_supported": true,
   "pagination_note": "This page is full (25 of a requested 25), so more records probably exist. Request page 2 to continue. The Hudu API returns no total count, so the number of remaining records is not knowable without paging through.",
   "items": [...]
 }
@@ -64,7 +76,15 @@ How to read it:
   collection of exactly 25 records produces the same signal. The only way to know
   is to request `next_page` and see what comes back.
 - **`page_was_full: false` means this is the last page** for the filters you gave.
-  That is the one case where the list is complete.
+  It says nothing about what the filters themselves exclude: `hudu_list_companies`
+  omits archived companies on every page, so a complete last page there is still
+  not every company on the instance. Where a list has a limit of that kind, the
+  envelope carries a `completeness_caveat` and repeats it in `pagination_note`.
+- **`count` is always the number of records in `items`.** When the output budget
+  cuts a response, `count` follows the cut and `records_on_page` reports what the
+  page held, so `page_was_full: true` beside a smaller `count` is not a
+  contradiction — it means the page was full and this response does not carry all
+  of it.
 - **Never answer "how many" from one page.** If someone asks how many assets a
   company has, either page to the end and count, or say what you counted and that
   more may exist. `count` is the number of records in this response and nothing
@@ -89,6 +109,7 @@ envelope:
   "count": 2,
   "page_was_full": false,
   "next_page": null,
+  "pagination_supported": false,
   "pagination_note": "Returned 2 record(s). This Hudu endpoint does not support pagination at all — ...",
 }
 ```
@@ -101,18 +122,38 @@ Always send a filter.
 ### Truncation is not the end of the data
 
 A response that exceeds the 25,000-character output budget is halved until it
-fits, and then says so:
+fits, and then says so — **above `items`**, because clients clip long tool
+results and a correction printed after twenty-five kilobytes of records is one
+nobody reads:
 
 ```jsonc
 {
+  "page": 1,
+  "page_size": 100,
+  "count": 25,
+  "page_was_full": true,
+  "next_page": 2,
+  "pagination_supported": true,
+  "pagination_note": "Page 1: 25 of the 100 record(s) Hudu returned are in `items`; 75 were dropped to fit this client's output budget, so this is a partial answer. ...",
   "truncated": true,
+  "records_on_page": 100,
   "truncation_note": "Response truncated from 100 to 25 record(s) to stay within the 25000-character response budget. This is a client-side cut, not the end of the data: lower page_size, add filters, or request specific ids to see the rest.",
+  "items": [...]
 }
 ```
 
-On a paginated endpoint, lower `page_size` or project with `fields`. On the five
-unpaginated ones there is no next page, so narrower filters or fewer fields are
-the only remedies.
+`pagination_note` is rewritten when this happens, because the note generated
+before the cut describes a response that was never sent. A truncated envelope
+never claims to be complete.
+
+On a paginated endpoint, lower `page_size` or project with `fields` — and note
+that `next_page` resumes after everything on this page, not after the records you
+were shown, so paging on alone never recovers what was dropped. On the five
+unpaginated ones there is no next page and no `page_size` to lower, so narrower
+filters or fewer fields are the only remedies; where an endpoint offers no filter
+narrow enough — `hudu_list_rack_storage_items` has only instance-wide filters —
+the dropped records cannot be reached at all, and the note says so rather than
+implying a page that would fetch them.
 
 ## Find a client's documented credentials without exposing them
 
@@ -140,15 +181,39 @@ If you do not project with `fields`, you see the removal happen:
   "id": 7,
   "name": "Firewall admin",
   "username": "admin",
-  "password": "[withheld: password reveal is disabled on this server]",
-  "otp_secret": "[withheld: password reveal is disabled on this server]",
+  "password": null,
+  "otp_secret": null,
+  "password_redacted": true,
+  "otp_secret_redacted": true,
 }
 ```
 
-The placeholder reads `[withheld: use hudu_reveal_password]` instead when the
-reveal tool is enabled on this server. A `null` password is left as `null` rather
-than replaced: a credential record with no stored secret is a real and useful
-fact, and disguising it as a redaction would be a lie.
+**No field named `password` or `otp_secret` ever holds a string.** A withheld
+value is `null`, and the `<field>_redacted: true` flag beside it is how you know
+something was there. That is the whole point of the shape: a stand-in that looks
+like a value is a value as far as anything downstream is concerned.
+
+A record that genuinely stores nothing comes back `null` with **no** flag:
+
+```jsonc
+{
+  "id": 9,
+  "name": "Guest wifi (documented, no password set)",
+  "username": null,
+  "password": null,
+}
+```
+
+Those two records are different facts and must not be reported as the same one.
+`password_redacted: true` means "there is a credential on file and it was
+withheld from you". A bare `null` means "this record documents an account with
+nothing stored against it". Treating a redacted field as an empty password
+invents a missing credential; treating an empty one as redacted reports a
+credential that does not exist.
+
+The human-readable explanation arrives as a notice above the payload rather than
+inside it, and it names `hudu_reveal_password` when that tool is registered or
+says the operator has not enabled it when it is not.
 
 This is enough for most audits:
 
@@ -186,6 +251,25 @@ mitigation, not a control; see [security.md](security.md#residual-risks).
 
 If you do not need reveal, create the API key without password access. That
 boundary is enforced by Hudu rather than by this process.
+
+### Writing a credential is a different permission
+
+`hudu_create_password`, `hudu_update_password` and `hudu_archive_password` are
+not registered unless the operator has set `HUDU_ALLOW_PASSWORD_WRITE=1`, and
+`hudu_delete_password` needs that and `HUDU_ALLOW_DESTRUCTIVE=1` together. The
+reveal gate does not open the write gate and the write gate does not open the
+reveal gate. That is deliberate in both directions: reading an existing
+credential and overwriting one are different powers, and an operator who wants an
+assistant to **document** a newly issued password should not have to grant it
+read access to the whole vault to do it.
+
+If you have the write gate open, remember what an update is. Only the fields you
+supply are sent, but Hudu applies them as a PUT: for each field you do send, the
+new value replaces the old one outright, and a stored secret you overwrite is not
+recoverable through this API. Read the record first, name it to the user, and say
+what you are about to change before you call. There is no per-call `confirm` on
+create, update or archive — only the delete requires one — so the description is
+the only thing standing between an instruction and an overwrite.
 
 ## Audit what expires in the next 30 days
 

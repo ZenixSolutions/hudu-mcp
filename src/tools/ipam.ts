@@ -16,6 +16,9 @@
  * with a `page` parameter answers `400 {"error":"page is not a valid filter
  * parameter."}` on Hudu 2.34.2 (spec-defects.md F4). Sending an undocumented
  * parameter to these endpoints fails the whole call rather than being ignored.
+ * That is a property of these endpoints and not of the API — `/companies`
+ * answers 200 to an unrecognised parameter and quietly ignores it — so the
+ * conclusion travels no further than the two resources in this module.
  */
 
 import { z } from 'zod';
@@ -40,16 +43,38 @@ const noPagingNote =
   'returns everything matching your filters in a single response. If `truncated` comes back ' +
   'true the client cut records to stay inside its response budget, and because there is no ' +
   'next page the only ways to see the rest are narrower filters or a shorter `fields` list.\n\n' +
-  'There is no point asking for a page: Hudu rejects an undocumented query parameter outright ' +
-  'rather than ignoring it, and `GET /networks?page=1` answers 400 "page is not a valid filter ' +
-  'parameter" on 2.34.2.';
+  'There is no point asking for a page: these endpoints reject an undocumented query parameter ' +
+  'outright rather than ignoring it, and `GET /networks?page=1` answers 400 "page is not a ' +
+  "valid filter parameter\" on 2.34.2. That is this endpoint's behaviour rather than the API's " +
+  '— `/companies` answers 200 and ignores the same kind of parameter — so do not carry the ' +
+  'assumption either way to another resource.';
+
+/**
+ * How a `name` filter matches, which the captured contract never says.
+ *
+ * Measured on Hudu 2.34.2 against `GET /assets`: `name: "UDM Pro"` matched the
+ * whole name case-insensitively and excluded "UDM Pro Max". The measurement is
+ * from the asset list rather than this one, so it is offered as the behaviour
+ * to expect rather than as a fact established here. It bites harder on networks
+ * than elsewhere, because `GET /networks` publishes no `search` filter at all:
+ * there is no substring fallback to reach for when the exact name is unknown.
+ */
+const NAME_MATCHING =
+  'Matching, observed on Hudu 2.34.2 and documented nowhere: a `name` filter matched the whole ' +
+  'value case-insensitively rather than as a substring — on the asset list, `name: "UDM Pro"` ' +
+  'excluded "UDM Pro Max". That is one instance rather than a published contract, but note that ' +
+  'this endpoint offers no `search` filter to fall back on, so an empty result here means ' +
+  'nothing matched the name in full and not that no such network exists. Filter by `company_id` ' +
+  'and read the names back instead when you are unsure of the exact wording.';
 
 const networkTypeDescription =
   'Network type, as an integer. Hudu does not publish what each number means, and the mapping ' +
   'is not derivable from the API — read an existing network on this instance with ' +
-  'hudu_list_networks to see which values are in use before setting one. The only value ' +
-  'observed on a live Hudu 2.34.2 instance was 0, on every network; that is one instance, not ' +
-  'a published contract, so it says what is in use there rather than what is legal.';
+  'hudu_list_networks to see which values are in use before setting one. The only value observed ' +
+  'on a live Hudu 2.34.2 instance was 0, on every network without exception — so there is ' +
+  'nothing there to filter on and no vocabulary to infer from the data: as a filter this ' +
+  'parameter would have selected every network or none. That is one instance, not a published ' +
+  'contract, so it says what is in use there rather than what is legal.';
 
 const locationIdDescription =
   'Numeric id of the Hudu location this network serves, for tenants that split a company ' +
@@ -112,7 +137,7 @@ export const networksSpec: ResourceSpec = {
       .positive()
       .optional()
       .describe('Return only networks owned by this company. The most useful filter here.'),
-    name: z.string().optional().describe('Match against the network name.'),
+    name: z.string().optional().describe(`Match against the network name. ${NAME_MATCHING}`),
     address: z
       .string()
       .optional()

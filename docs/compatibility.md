@@ -57,7 +57,7 @@ tool descriptions do not also say.
 
 **stdio only.** The server is launched as a local process and speaks JSON-RPC
 over its standard input and output. There is no HTTP transport, no SSE endpoint
-and no listening socket in 0.1.0. `src/transport/` is the only place that would
+and no listening socket. `src/transport/` is the only place that would
 change if a Streamable HTTP transport were added later; nothing else in the
 codebase knows what transport it is running on.
 
@@ -85,7 +85,7 @@ your machine, which is what a stdio server requires. This is a property of those
 products, not a missing feature in a particular version of them.
 
 Using this server with a hosted connector would mean deploying it behind a
-remote HTTP MCP endpoint — a transport 0.1.0 does not provide. A generic
+remote HTTP MCP endpoint — a transport this server does not provide. A generic
 stdio-to-HTTP bridge would technically work, and it is a decision worth making
 deliberately rather than by convenience: it puts your Hudu API key on a
 network-reachable host, and it means any request that reaches that endpoint acts

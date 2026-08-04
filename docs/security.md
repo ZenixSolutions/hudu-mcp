@@ -61,8 +61,10 @@ the server runs on. At that point the key is theirs.
 | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Capability gates read only from the environment                     | `src/config.ts`                                                                                                                                                 | A model, or a prompt, enabling a capability the operator did not                                                                                                                                   |
 | Gated tools are not registered at all                               | `shouldRegister` in `src/tools/define.ts`, `src/server.ts`                                                                                                      | A model being talked into calling a tool it can see but should not use                                                                                                                             |
-| Operation classification drives gating and annotations              | `src/security/classification.ts`                                                                                                                                | A tool being mis-declared as harmless one file at a time                                                                                                                                           |
+| Operation classification drives gating and annotations              | `src/security/classification.ts`                                                                                                                                | A tool being mis-declared as harmless one file at a time. `Update`, `Admin` and `Destructive` all carry `destructiveHint: true`                                                                    |
 | Central, recursive secret stripping                                 | `stripSecrets` in `src/security/secrets.ts`, applied in `executeTool`                                                                                           | `password` and `otp_secret` reaching a tool result, including from places the schema does not document                                                                                             |
+| A withheld secret is `null` plus a flag, never a string             | `redactedFlagFor` in `src/security/secrets.ts`                                                                                                                  | A withheld value being read as a credential. No field named `password` or `otp_secret` can hold a string, so nothing downstream has to judge whether a string is real                              |
+| Password writes gated separately from password reads                | `requiresPasswordWrite` in `src/tools/define.ts`, `storesSecrets` in `src/tools/resource.ts`, `HUDU_ALLOW_PASSWORD_WRITE` in `src/config.ts`                    | A deployment overwriting or archiving a credential it is not permitted to read                                                                                                                     |
 | Markdown rendered from the stripped payload, then scrubbed by value | `ToolResult.markdown` as a render function called on the stripped, budgeted data in `executeTool`, plus `collectSecretValues` / `redactSecretsInText` behind it | A secret escaping through `response_format: "markdown"`. Rendering used to run on the raw record, and by-value scrubbing alone could not match a secret the renderer had JSON-escaped or cut short |
 | Single-record reveal, gated three ways                              | `hudu_reveal_password` in `src/tools/passwords.ts`                                                                                                              | A bulk credential dump. There is no bulk form of the tool                                                                                                                                          |
 | `confirm: true` on every Destructive and Admin tool                 | `CLASS_REQUIREMENTS` in `src/security/classification.ts`, enforced in `executeTool`                                                                             | A destructive call made without the impact being stated first                                                                                                                                      |
@@ -76,6 +78,41 @@ the server runs on. At that point the key is theirs.
 These are verified rather than asserted: `tests/security/` holds
 `capability-gates.test.ts`, `secret-exposure.test.ts`, `error-leakage.test.ts`
 and `tool-surface.test.ts`, and they run in CI on every push.
+
+### Two of these controls exist because 0.1.0 shipped without them
+
+Both were found by an external reviewer working against the published
+`@zenixsolutions/hudu-mcp@0.1.0` package and a live Hudu 2.34.2 instance. The
+test suite above did not find either, and that is worth stating plainly: the
+suite compared the implementation against a specification derived from the same
+reasoning that produced the defect, so it agreed with it.
+
+**Password writes were ungated while password reads were gated.**
+`HUDU_ALLOW_PASSWORD_REVEAL` gated `hudu_reveal_password` and nothing else, so
+`hudu_create_password`, `hudu_update_password` and `hudu_archive_password` were
+registered by default. A deployment whose key could not read a stored credential
+could still overwrite or archive one — the destructive direction open while the
+read direction was locked. The reasoning that produced it treated "does a secret
+leave the building?" as the question a password gate answers. It is not the only
+one: losing the only written copy of a working credential is a loss whether or
+not anybody read it. Fixed in 0.2.0 by `HUDU_ALLOW_PASSWORD_WRITE`.
+
+**A withheld secret looked like a secret.** A stripped field came back as
+`password: "[withheld: password reveal is disabled on this server]"` — a
+plausible 54-character string in a field named `password`, once per record. The
+reviewer established that those were not credentials by counting distinct values
+across sixteen records and finding one. Nothing downstream does that: a model
+that trusts a field name pastes the value into a ticket, and a script that treats
+a non-empty `password` as a password is behaving correctly. The rule is now
+structural — no field named `password` or `otp_secret` holds a string, ever — and
+the fact a caller actually needs moved to a boolean under a different key. See
+[adr/ADR-003-security-posture-corrections.md](adr/ADR-003-security-posture-corrections.md)
+for the full record, including what ADR-002 got wrong and why.
+
+A third finding is not in this table because it is a disclosure defect rather
+than a control: 32 tools that change something carried `destructiveHint: false`,
+so a client that prompts from MCP annotations prompted for none of them. `Update`
+and `Admin` now carry `destructiveHint: true`.
 
 ## The boundary that is not in this repository
 
@@ -149,6 +186,16 @@ of a request, and in any core dump taken from it.
 material enters the model's context and the client's transcript. Where it goes
 next — a log, a chat history, a training pipeline, a screenshot — is a property
 of the client and the deployment, not of this server.
+
+**A permitted credential write takes no per-call confirmation.**
+`hudu_create_password`, `hudu_update_password` and `hudu_archive_password` are
+classed `Create` and `Update`, and neither class requires `confirm: true` — only
+`Destructive` and `Admin` do, which is why `hudu_delete_password` does and the
+other three do not. Once `HUDU_ALLOW_PASSWORD_WRITE` is set, an agent can
+overwrite a credential record in one call. The tool description tells the model
+to name the record and state what happens to it first, and a description is not a
+control. If you would not accept an unattended overwrite of a vault entry, leave
+the gate unset.
 
 **Nothing authenticates the caller.** There is no authorisation layer between the
 MCP client and the tools. Anything that can speak to this process gets every tool

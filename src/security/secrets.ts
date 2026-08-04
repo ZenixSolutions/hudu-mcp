@@ -22,16 +22,63 @@ export type SecretField = (typeof SECRET_FIELDS)[number];
 
 const SECRET_FIELD_SET: ReadonlySet<string> = new Set(SECRET_FIELDS);
 
-/** Placeholder left behind so a model can see that a value exists. */
-export const WITHHELD = '[withheld: use hudu_reveal_password]';
+/**
+ * Suffix of the sibling flag that records a redaction.
+ *
+ * A redacted secret becomes `password: null, password_redacted: true` rather
+ * than a placeholder string. That shape is not a stylistic choice.
+ *
+ * The 0.1.0 behaviour put a sentence *inside* the field — `password:
+ * "[withheld: password reveal is disabled on this server]"` — so a list of
+ * sixteen credentials came back with sixteen fields named `password`, each
+ * holding a plausible fifty-four-character string. Establishing that those were
+ * not credentials required noticing that all sixteen were identical. Nothing
+ * downstream does that. A model that trusts a field name pastes the value into
+ * a ticket, and a script that treats a non-empty `password` as "a password"
+ * is correct to do so.
+ *
+ * So the rule is structural and absolute: **a field named `password` or
+ * `otp_secret` never holds a string again.** `null` is unambiguous to every
+ * consumer, and the fact the reviewer actually needed — that a value exists —
+ * moves to a boolean under a different key, where it cannot be mistaken for
+ * the secret itself.
+ */
+export const REDACTED_FLAG_SUFFIX = '_redacted';
 
-/** Placeholder used when the reveal tool itself is not enabled. */
-export const WITHHELD_DISABLED = '[withheld: password reveal is disabled on this server]';
+/** The flag key that accompanies a redacted `field`. */
+export const redactedFlagFor = (field: string): string => `${field}${REDACTED_FLAG_SUFFIX}`;
 
-export interface StripOptions {
-  /** Replace secrets with a placeholder instead of deleting the key outright. */
-  readonly placeholder?: string | undefined;
-}
+/**
+ * Replacement written over a secret found by value inside rendered text.
+ *
+ * Text, unlike a record, has no key to hang a flag on, so this one has to be a
+ * string. It is short and obviously not a credential — the failure mode being
+ * avoided is a placeholder that *looks* like a value, and a five-character
+ * bracketed word does not.
+ */
+export const REDACTED_TEXT = '[redacted]';
+
+/**
+ * Note explaining a redaction, for a tool's `notice` — never for the payload.
+ *
+ * `executeTool` prepends the notice to the model-visible text, which is where a
+ * human-readable explanation belongs. Inside the record it would be a string
+ * under a secret's name, which is the defect this replaces.
+ */
+export const REDACTION_NOTE =
+  'Stored secrets were withheld from this result: any field set to null beside a ' +
+  '`<field>_redacted: true` flag did hold a value. Read one with hudu_reveal_password, by id, ' +
+  'when the user has asked for that specific credential.';
+
+/** The same note for a server where the reveal tool is not registered at all. */
+export const REDACTION_NOTE_REVEAL_DISABLED =
+  'Stored secrets were withheld from this result: any field set to null beside a ' +
+  '`<field>_redacted: true` flag did hold a value. This server has password reveal disabled, so ' +
+  'no tool here can return it — the operator must set HUDU_ALLOW_PASSWORD_REVEAL.';
+
+/** True when a secret field holds real material rather than nothing at all. */
+const holdsSecret = (value: unknown): boolean =>
+  value !== null && value !== undefined && value !== '';
 
 /**
  * Recursively remove secret fields from an arbitrary API payload.
@@ -40,12 +87,19 @@ export interface StripOptions {
  * assets and companies in places the schema does not document, so a
  * field-by-field allowlist per endpoint would leak the first time the vendor
  * nested one somewhere new.
+ *
+ * A field that held a value becomes `null` with a `<field>_redacted: true`
+ * sibling. A field that was already null, undefined or empty is passed through
+ * untouched and gets **no** flag: "this record documents an account with no
+ * stored password" and "this record's password was withheld from you" are
+ * different facts, and a caller that cannot tell them apart will either invent a
+ * credential that does not exist or report a real one as missing.
  */
-export function stripSecrets<T>(value: T, options: StripOptions = {}): T {
-  return strip(value, options, new WeakMap()) as T;
+export function stripSecrets<T>(value: T): T {
+  return strip(value, new WeakMap()) as T;
 }
 
-function strip(value: unknown, options: StripOptions, seen: WeakMap<object, unknown>): unknown {
+function strip(value: unknown, seen: WeakMap<object, unknown>): unknown {
   if (value === null || typeof value !== 'object') return value;
 
   const cached = seen.get(value);
@@ -54,26 +108,32 @@ function strip(value: unknown, options: StripOptions, seen: WeakMap<object, unkn
   if (Array.isArray(value)) {
     const output: unknown[] = [];
     seen.set(value, output);
-    for (const item of value) output.push(strip(item, options, seen));
+    for (const item of value) output.push(strip(item, seen));
     return output;
   }
 
   const output: Record<string, unknown> = {};
   seen.set(value, output);
+  const flags: string[] = [];
+
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
     if (SECRET_FIELD_SET.has(key)) {
-      // Only mark a field as withheld when something was actually there. A null
-      // password is a real, useful fact about a record and must not be
-      // disguised as a redaction.
-      if (item === null || item === undefined || item === '') {
+      if (holdsSecret(item)) {
+        output[key] = null;
+        flags.push(redactedFlagFor(key));
+      } else {
         output[key] = item;
-      } else if (options.placeholder !== undefined) {
-        output[key] = options.placeholder;
       }
       continue;
     }
-    output[key] = strip(item, options, seen);
+    output[key] = strip(item, seen);
   }
+
+  // Written after the loop so this server's flag wins over any same-named field
+  // the API happens to return. The flag is an assertion about what we did, and
+  // upstream data must not be able to contradict it.
+  for (const flag of flags) output[flag] = true;
+
   return output;
 }
 
@@ -100,12 +160,11 @@ export function collectSecretValues(value: unknown): string[] {
     }
 
     for (const [key, item] of Object.entries(node as Record<string, unknown>)) {
-      if (
-        SECRET_FIELD_SET.has(key) &&
-        typeof item === 'string' &&
-        item !== '' &&
-        !item.startsWith('[withheld')
-      ) {
+      // Any non-empty string under a secret's name is treated as the real thing.
+      // There is no placeholder to exempt any more, and that is the point: a
+      // walker with an exemption list is a walker that can be fooled into
+      // ignoring a value by making it resemble the exemption.
+      if (SECRET_FIELD_SET.has(key) && typeof item === 'string' && item !== '') {
         found.add(item);
         continue;
       }
@@ -139,6 +198,11 @@ export function redactSecretsInText(
  * Used by the security test suite and as a last-resort runtime guard on the
  * response path. Article VIII requires security controls to be verified rather
  * than assumed; this is the verification hook.
+ *
+ * The invariant it checks is now exact rather than approximate: after
+ * `stripSecrets`, **no** string may sit under a secret's name, so any string
+ * found here is a leak. There is no placeholder to make an exception for, which
+ * is what lets this be a flat rule instead of a rule with a hole in it.
  */
 export function findSecretFields(value: unknown, path = '$'): string[] {
   const found: string[] = [];
@@ -156,12 +220,7 @@ export function findSecretFields(value: unknown, path = '$'): string[] {
 
     for (const [key, item] of Object.entries(node as Record<string, unknown>)) {
       const here = `${at}.${key}`;
-      if (
-        SECRET_FIELD_SET.has(key) &&
-        typeof item === 'string' &&
-        item !== '' &&
-        !item.startsWith('[withheld')
-      ) {
+      if (SECRET_FIELD_SET.has(key) && typeof item === 'string' && item !== '') {
         found.push(here);
         continue;
       }

@@ -82,11 +82,18 @@ recorded in the code or in `spec-defects.md`.
    path.
 
 4. **Capability gates are environment-only.** `HUDU_READ_ONLY`,
-   `HUDU_ALLOW_DESTRUCTIVE`, `HUDU_ALLOW_PASSWORD_REVEAL` and
-   `HUDU_ALLOW_EXPORTS` are read from the environment in `src/config.ts` and
-   nowhere else. Never add a tool argument that enables, overrides or softens a
-   gate, and never accept a credential as a tool argument. A gated tool is not
-   registered at all rather than registered-and-refusing.
+   `HUDU_ALLOW_DESTRUCTIVE`, `HUDU_ALLOW_PASSWORD_REVEAL`,
+   `HUDU_ALLOW_PASSWORD_WRITE` and `HUDU_ALLOW_EXPORTS` are read from the
+   environment in `src/config.ts` and nowhere else. Never add a tool argument
+   that enables, overrides or softens a gate, and never accept a credential as a
+   tool argument. A gated tool is not registered at all rather than
+   registered-and-refusing.
+
+   **Gate both directions.** 0.1.0 gated _reading_ a stored credential and left
+   _writing_ one ungated, so a password-scoped key could overwrite a secret it
+   could not read. When a gate protects a resource, ask what else touches that
+   resource before deciding the gate is complete — reads are the direction that
+   comes to mind first and rarely the more consequential one.
 
 5. **Never invent pagination metadata.** No Hudu collection endpoint returns a
    total, and there is no envelope, no `X-Total-Count` and no `Link` header
@@ -95,6 +102,14 @@ recorded in the code or in `spec-defects.md`.
    partial inventory as complete. `page_was_full` is the honest signal. Five
    collections have no pagination at all (C2) and must report that rather than
    fake a page.
+
+   The same rule applies to anything that narrows a result without saying so.
+   `GET /companies` silently omits archived records and offers no parameter to
+   include them, so a note reading "this is the last page for the current
+   filters" is true about the paging and misleading about the universe — hence
+   `completenessCaveat`. And truncation metadata is emitted _before_ `items`,
+   because clients clip long results and a correction below the payload is a
+   correction nobody reads.
 
 6. **Only documented API surface.** If an endpoint, parameter or field is not in
    `docs/reference/api-docs.json`, it does not get a tool, an argument, or a

@@ -35,7 +35,7 @@ install this project reflexively.
 | Articles                                            | Create, read, update                           | Create, read, update, archive, delete                   |
 | Assets                                              | Read only                                      | Full CRUD, plus archive and layouts                     |
 | Activity log                                        | Read                                           | Read, and purge behind two gates                        |
-| Passwords                                           | Excluded entirely                              | Metadata by default; secrets behind a gate              |
+| Passwords                                           | Excluded entirely                              | Metadata by default; secrets and writes behind gates    |
 | Deletions                                           | Excluded entirely                              | Behind `HUDU_ALLOW_DESTRUCTIVE` and `confirm: true`     |
 | IPAM, racks, websites, relations, matchers, exports | Not covered                                    | Covered                                                 |
 | Support                                             | Hudu support                                   | GitHub issues, best effort                              |
@@ -83,7 +83,7 @@ that starts a local stdio server:
 ```
 
 That configuration registers 40 read tools and nothing that can change or delete
-anything. Drop `HUDU_READ_ONLY` when you want writes; see
+anything. Drop `HUDU_READ_ONLY` when you want writes — that is 67 tools; see
 [Security model](#security-model) before you do.
 
 Verify a configuration without starting a session:
@@ -117,7 +117,9 @@ changed afterwards; a different scope means a new key. Create the key with the
 least this server needs and no more:
 
 - Leave password access off unless you intend to set
-  `HUDU_ALLOW_PASSWORD_REVEAL=1`.
+  `HUDU_ALLOW_PASSWORD_REVEAL=1` or `HUDU_ALLOW_PASSWORD_WRITE=1`. Hudu's key
+  scope covers all REST actions on passwords, so it does not separate reading a
+  credential from writing one; the two gates in this server do.
 - Leave destructive actions off unless you intend to set
   `HUDU_ALLOW_DESTRUCTIVE=1`.
 - Leave export capability off unless you intend to set `HUDU_ALLOW_EXPORTS=1`.
@@ -140,20 +142,21 @@ time. Deleting the key is the fastest way to revoke this server's access.
 Everything is read from the environment. Nothing is read from disk, and no
 credential is accepted as a tool argument.
 
-| Variable                     | Default    | What it does                                                                                                                                               |
-| ---------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HUDU_BASE_URL`              | _required_ | Your Hudu instance origin, e.g. `https://hudu.example.com`. A trailing slash or a trailing `/api/v1` is normalised away; the client adds `/api/v1` itself. |
-| `HUDU_API_KEY`               | _required_ | The key from Admin → Basic Information → API Keys. Sent as the `x-api-key` header.                                                                         |
-| `HUDU_READ_ONLY`             | off        | Register only `Read` tools. Nothing can create, update, archive, delete, export or purge. 40 tools instead of 70.                                          |
-| `HUDU_ALLOW_DESTRUCTIVE`     | off        | Register the 16 delete and purge tools, including the activity-log purge.                                                                                  |
-| `HUDU_ALLOW_PASSWORD_REVEAL` | off        | Register `hudu_reveal_password`, which returns one stored secret per call. Password metadata is available without it.                                      |
-| `HUDU_ALLOW_EXPORTS`         | off        | Register the two bulk export tools.                                                                                                                        |
-| `HUDU_RATE_LIMIT_PER_MINUTE` | `120`      | Client-side request ceiling. Must be a positive integer no greater than 300, which is the limit Hudu documents.                                            |
-| `HUDU_MAX_CONCURRENCY`       | `4`        | Simultaneous in-flight requests. Maximum 32.                                                                                                               |
-| `HUDU_REQUEST_TIMEOUT_MS`    | `30000`    | Per-request timeout in milliseconds. Maximum 600000.                                                                                                       |
-| `HUDU_MAX_RETRIES`           | `3`        | Retries for transient failures (timeouts, network errors, `429`, `5xx`), with full-jitter backoff. 0 to 10.                                                |
+| Variable                     | Default    | What it does                                                                                                                                                  |
+| ---------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HUDU_BASE_URL`              | _required_ | Your Hudu instance origin, e.g. `https://hudu.example.com`. A trailing slash or a trailing `/api/v1` is normalised away; the client adds `/api/v1` itself.    |
+| `HUDU_API_KEY`               | _required_ | The key from Admin → Basic Information → API Keys. Sent as the `x-api-key` header.                                                                            |
+| `HUDU_READ_ONLY`             | off        | Register only `Read` tools. Nothing can create, update, archive, delete, export or purge. 40 tools instead of 67.                                             |
+| `HUDU_ALLOW_DESTRUCTIVE`     | off        | Register the 16 delete and purge tools, including the activity-log purge.                                                                                     |
+| `HUDU_ALLOW_PASSWORD_REVEAL` | off        | Register `hudu_reveal_password`, which returns one stored secret per call. Password metadata is available without it.                                         |
+| `HUDU_ALLOW_PASSWORD_WRITE`  | off        | Register `hudu_create_password`, `hudu_update_password` and `hudu_archive_password`. Also required, with `HUDU_ALLOW_DESTRUCTIVE`, by `hudu_delete_password`. |
+| `HUDU_ALLOW_EXPORTS`         | off        | Register the two bulk export tools.                                                                                                                           |
+| `HUDU_RATE_LIMIT_PER_MINUTE` | `120`      | Client-side request ceiling. Must be a positive integer no greater than 300, which is the limit Hudu documents.                                               |
+| `HUDU_MAX_CONCURRENCY`       | `4`        | Simultaneous in-flight requests. Maximum 32.                                                                                                                  |
+| `HUDU_REQUEST_TIMEOUT_MS`    | `30000`    | Per-request timeout in milliseconds. Maximum 600000.                                                                                                          |
+| `HUDU_MAX_RETRIES`           | `3`        | Retries for transient failures (timeouts, network errors, `429`, `5xx`), with full-jitter backoff. 0 to 10.                                                   |
 
-The four gates are booleans. `1`, `true`, `yes` and `on` (any case, surrounding
+The five gates are booleans. `1`, `true`, `yes` and `on` (any case, surrounding
 whitespace ignored) enable them; anything else, including an unset variable,
 leaves them off.
 
@@ -171,16 +174,18 @@ Read [SECURITY.md](SECURITY.md) for the reporting process and the full model, an
 [docs/security.md](docs/security.md) for the threat model and residual risks.
 The short version:
 
-**Nothing permissive is on by default.** Out of the box the server registers 70
-tools: reads, creates and updates. Deletions, password reveal and exports are all
-absent until an operator sets the matching variable. A gated tool is not
-registered at all rather than registered-and-refusing, because a tool a model
-cannot see is a tool it cannot be talked into calling.
+**Nothing permissive is on by default.** Out of the box the server registers 67
+tools: reads, creates, and updates that do not touch the credential vault.
+Deletions, password reveal, password writes and exports are all absent until an
+operator sets the matching variable. A gated tool is not registered at all
+rather than registered-and-refusing, because a tool a model cannot see is a tool
+it cannot be talked into calling.
 
-**Four gates, all environment-only.** `HUDU_READ_ONLY`,
-`HUDU_ALLOW_DESTRUCTIVE`, `HUDU_ALLOW_PASSWORD_REVEAL` and `HUDU_ALLOW_EXPORTS`
-are read in `src/config.ts` and nowhere else. There is no tool argument that
-enables, overrides or softens any of them.
+**Five gates, all environment-only.** `HUDU_READ_ONLY`,
+`HUDU_ALLOW_DESTRUCTIVE`, `HUDU_ALLOW_PASSWORD_REVEAL`,
+`HUDU_ALLOW_PASSWORD_WRITE` and `HUDU_ALLOW_EXPORTS` are read in `src/config.ts`
+and nowhere else. There is no tool argument that enables, overrides or softens
+any of them.
 
 **Passwords are withheld because of how the Hudu API is shaped.** The
 `Asset_Password` model lists `password` ("The actual password string") and
@@ -189,11 +194,26 @@ properties, and `GET /asset_passwords` returns an array of that model
 (`docs/reference/spec-defects.md` A1). A single unfiltered list call therefore
 returns every credential and every TOTP seed the key can see. This server strips
 those two fields recursively from every tool result, centrally, in
-`executeTool` — leaving a placeholder so a model can tell a value exists — and
-renders Markdown from the stripped payload rather than the raw record, and
-scrubs the rendered text by value behind that. The only exception is
-`hudu_reveal_password`, which needs `HUDU_ALLOW_PASSWORD_REVEAL=1`, an explicit
-`confirm: true`, and one specific record id. There is no bulk reveal.
+`executeTool`, renders Markdown from the stripped payload rather than the raw
+record, and scrubs the rendered text by value behind that. A withheld value
+comes back as `null` beside a `password_redacted: true` (or
+`otp_secret_redacted: true`) flag; a field that genuinely stores nothing comes
+back `null` with no flag, so "no credential on file" and "credential withheld
+from you" stay distinguishable. No field named `password` or `otp_secret` ever
+holds a string. The only exception is `hudu_reveal_password`, which needs
+`HUDU_ALLOW_PASSWORD_REVEAL=1`, an explicit `confirm: true`, and one specific
+record id. There is no bulk reveal.
+
+**Writing a credential is gated separately from reading one.**
+`HUDU_ALLOW_PASSWORD_WRITE` registers `hudu_create_password`,
+`hudu_update_password` and `hudu_archive_password`, and combines with
+`HUDU_ALLOW_DESTRUCTIVE` on `hudu_delete_password`. It is a separate flag from
+the reveal gate on purpose: overwriting the only copy of a working credential is
+a real loss even though no secret leaves the building, and documenting a newly
+issued credential without being able to read existing ones is a legitimate
+posture. Neither gate opens the other. Until 0.2.0 nothing gated the write
+direction at all, which left a deployment able to overwrite or archive a
+credential it could not read.
 
 **Destructive work needs two independent keys.** The operator's
 `HUDU_ALLOW_DESTRUCTIVE` decides whether the 16 destructive tools exist at all;
@@ -208,7 +228,7 @@ See [Getting an API key](#getting-an-api-key).
 
 ## Tool surface
 
-89 tools with every gate open, 70 with the defaults, 40 in read-only mode.
+89 tools with every gate open, 67 with the defaults, 40 in read-only mode.
 
 | Resource group                            |  Tools | Registered by default | In read-only mode |
 | ----------------------------------------- | -----: | --------------------: | ----------------: |
@@ -218,7 +238,7 @@ See [Getting an API key](#getting-an-api-key).
 | Articles                                  |      6 |                     5 |                 2 |
 | Folders                                   |      5 |                     4 |                 2 |
 | Procedures                                |      3 |                     3 |                 2 |
-| Passwords and password folders            |      9 |                     7 |                 4 |
+| Passwords and password folders            |      9 |                     4 |                 4 |
 | Networks and IP addresses                 |     10 |                     8 |                 4 |
 | Racks and rack items                      |     10 |                     8 |                 4 |
 | Websites                                  |      5 |                     4 |                 2 |
@@ -228,13 +248,51 @@ See [Getting an API key](#getting-an-api-key).
 | Instance, users, audit trail, expirations |      6 |                     5 |                 5 |
 | Files and photos                          |      4 |                     3 |                 3 |
 | Exports                                   |      2 |                     0 |                 0 |
-| **Total**                                 | **89** |                **70** |            **40** |
+| **Total**                                 | **89** |                **67** |            **40** |
+
+The passwords row is the only one where the default and the read-only column
+match: the four tools that survive both are the two list tools and the two get
+tools. `hudu_create_password`, `hudu_update_password` and
+`hudu_archive_password` need `HUDU_ALLOW_PASSWORD_WRITE`, `hudu_delete_password`
+needs that and `HUDU_ALLOW_DESTRUCTIVE`, and `hudu_reveal_password` needs
+`HUDU_ALLOW_PASSWORD_REVEAL`.
 
 By operation class: 41 `Read`, 13 `Create`, 17 `Update`, 16 `Destructive`, 2
 `Admin`. `hudu_reveal_password` is classed `Read` because it does not modify
 Hudu, so it remains available in read-only mode when
 `HUDU_ALLOW_PASSWORD_REVEAL` is also set — read-only mode restricts writes, not
 disclosure.
+
+MCP annotations are derived from the class rather than hand-set per tool.
+`Read` and `Create` carry `destructiveHint: false`; `Update`, `Admin` and
+`Destructive` carry `destructiveHint: true`. The protocol defines `true` as "may
+perform destructive updates" against `false` as "only additive", so an overwrite
+counts: a PUT replaces the prior value of every field it carries and this API
+offers no undo. `Update` also carries `idempotentHint: true`, which is a
+statement about replaying the same call, not about what the first one cost.
+
+### What a list tool returns
+
+Every list tool returns an object with `items` plus these facts about them:
+
+| Field                  | Meaning                                                                                                    |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `page`, `page_size`    | The page and size **requested**. `page_size` never changes to describe what came back.                     |
+| `count`                | The number of records in `items`, and nothing else.                                                        |
+| `page_was_full`        | The page came back full, so more records probably exist. Not a promise that they do.                       |
+| `next_page`            | The page to request next, or `null`.                                                                       |
+| `pagination_supported` | `false` when the endpoint documents no `page` parameter at all, so there is no further page to ask for.    |
+| `pagination_note`      | Plain-language statement of what is and is not known. Regenerated if the response was truncated.           |
+| `completeness_caveat`  | Present when the list is limited independently of paging — `hudu_list_companies` omits archived companies. |
+| `truncated`            | Present when this client cut records to fit its output budget.                                             |
+| `records_on_page`      | Present alongside `truncated`: how many records the page held before the cut.                              |
+| `truncation_note`      | What was dropped and how to reach it.                                                                      |
+
+There is deliberately no `total` and no `has_more`: no Hudu collection endpoint
+returns a count, so both would have to be invented. `truncated`,
+`records_on_page` and `truncation_note` are emitted **before** `items`, because
+clients clip long tool results and a correction printed below twenty-five
+kilobytes of records is not a correction.
 
 Every tool, with its arguments and gates: [docs/tool-reference.md](docs/tool-reference.md).
 Task-oriented recipes: [docs/user-guide.md](docs/user-guide.md).
@@ -254,9 +312,16 @@ likely to affect you:
 - **Five collections have no pagination at all** — networks, IP addresses, racks,
   rack items and uploads (C2). They return everything matching your filters in
   one response, and if that response is trimmed to fit the output budget there is
-  no next page to ask for.
-- **A rack's contents cannot be listed** (C4). No field or filter ties a rack item
-  to its rack.
+  no next page to ask for. Where the endpoint also offers no narrow enough
+  filter, the dropped records cannot be reached at all.
+- **`hudu_list_companies` silently omits archived companies**, and Hudu offers no
+  parameter that includes them. On the measured instance 27 companies existed and
+  the tool returned 22. `hudu_get_company` still reaches an archived company by
+  id, and the list envelope carries a `completeness_caveat` saying so.
+- **A rack storage item carries no rack id** (C4), so `hudu_list_rack_storage_items`
+  is instance-wide and cannot be grouped by cabinet. This is not the limitation it
+  was once written up as: a rack's contents come back on the rack itself, as a
+  per-unit `front_items`/`rear_items` elevation from `hudu_get_rack_storage`.
 - **Exports can be started but never retrieved** (C6). There is no status
   endpoint and no download URL in this API version.
 - **File upload is not implemented** (E1). The endpoints are `multipart/form-data`

@@ -84,6 +84,7 @@ describe('loadConfig — required variables', () => {
     expect(config.readOnly).toBe(false);
     expect(config.allowDestructive).toBe(false);
     expect(config.allowPasswordReveal).toBe(false);
+    expect(config.allowPasswordWrite).toBe(false);
     expect(config.allowExports).toBe(false);
   });
 });
@@ -117,6 +118,7 @@ describe('boolean environment parsing', () => {
     ['HUDU_READ_ONLY', 'readOnly'],
     ['HUDU_ALLOW_DESTRUCTIVE', 'allowDestructive'],
     ['HUDU_ALLOW_PASSWORD_REVEAL', 'allowPasswordReveal'],
+    ['HUDU_ALLOW_PASSWORD_WRITE', 'allowPasswordWrite'],
     ['HUDU_ALLOW_EXPORTS', 'allowExports'],
   ] as const;
 
@@ -207,6 +209,20 @@ describe('mutually exclusive capability flags', () => {
     const config = loadConfig(validEnv({ HUDU_READ_ONLY: '1', HUDU_ALLOW_PASSWORD_REVEAL: '1' }));
     expect(config.readOnly).toBe(true);
     expect(config.allowPasswordReveal).toBe(true);
+  });
+
+  // The two password gates are independent by design: documenting a new
+  // credential without being able to read existing ones is a legitimate
+  // workflow, so neither is inferred from the other and neither is rejected
+  // alongside the other.
+  it('parses the two password gates independently', () => {
+    const write = loadConfig(validEnv({ HUDU_ALLOW_PASSWORD_WRITE: '1' }));
+    expect(write.allowPasswordWrite).toBe(true);
+    expect(write.allowPasswordReveal).toBe(false);
+
+    const reveal = loadConfig(validEnv({ HUDU_ALLOW_PASSWORD_REVEAL: '1' }));
+    expect(reveal.allowPasswordReveal).toBe(true);
+    expect(reveal.allowPasswordWrite, 'reading must not imply writing').toBe(false);
   });
 });
 

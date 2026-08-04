@@ -42,6 +42,11 @@ const apiInfoTool = defineTool({
   description:
     'Report the version and build date of the Hudu instance this server is pointed at. Returns ' +
     '`version` and `date`, nothing else.\n\n' +
+    '`date` is passed through exactly as Hudu sends it and is not parsed, because it cannot be ' +
+    'trusted to be a date: Hudu 2.34.2 answered `"2026-31-05"`, which is not a valid ISO-8601 ' +
+    'date and appears to be year-day-month. Quote the string back if the user asks for it; do ' +
+    'not convert it, compare it to another date, or infer an instance age from it. `version` ' +
+    'is the field worth acting on.\n\n' +
     'Call this first whenever something behaves unexpectedly. The Hudu API changes between ' +
     'releases: several endpoints exist only on newer builds, and an older instance answers 404 ' +
     'for them — which is the same 404 it returns for a record that does not exist, so the two ' +
@@ -102,7 +107,12 @@ export const usersSpec: ResourceSpec = {
       .optional()
       .describe(
         "Text match across first and last name. The best first filter when you have a person's " +
-          'name but not their email.',
+          'name but not their email — but it is a *substring* match, so it returns everyone ' +
+          'whose name contains what you typed rather than the one person you meant. Elsewhere ' +
+          'in this API `search` and `name` behave differently in exactly that way (a `name` ' +
+          'filter matched whole and case-insensitively on Hudu 2.34.2, while `search` matched ' +
+          'substrings and returned more). This endpoint offers no exact-name filter at all: ' +
+          'when you need one account and not a family of them, use `email`.',
       ),
     email: z.string().optional().describe('Exact email address of the account to find.'),
     first_name: z.string().optional().describe('Match on the first name field alone.'),
@@ -157,9 +167,16 @@ const activityLogsSpec: ResourceSpec = {
     "The activity log is Hudu's audit trail: one entry per action, recording who did it, what " +
     'they did it to, and when.',
   listNotes:
-    'This is the tool for "who changed this, and when". Each entry carries `user_id` and ' +
-    '`user_email` (the actor), `resource_type` and `resource_id` (what they touched), and an ' +
-    '`action_message` describing the action.\n\n' +
+    'This is the tool for "who changed this, and when".\n\n' +
+    '**The filter names and the response field names are different words for the same things, ' +
+    'and you must not go looking in the response for what you filtered on.** You filter with ' +
+    '`resource_type`, `resource_id` and `action_message`. Entries come back with `user_id` and ' +
+    '`user_email` (the actor), `record_type` and `record_id` (what they touched), `action` (what ' +
+    'they did), `created_at`, and `details`. There is no `action_message` field on an entry — ' +
+    'the value it filters is read back as `action`, and `resource_type`/`resource_id` are read ' +
+    'back as `record_type`/`record_id`. This asymmetry is observed on Hudu 2.34.2; the Hudu ' +
+    'contract documents no success response for this endpoint at all (spec-defects.md B2), so ' +
+    'the response field names are measurement rather than published contract.\n\n' +
     'Combine the filters to answer a real question rather than paging the whole log:\n' +
     '- History of one record: `resource_type` plus `resource_id` together. Sending one without ' +
     'the other does nothing.\n' +
@@ -168,13 +185,29 @@ const activityLogsSpec: ResourceSpec = {
     'start only; to look at "last week" specifically, set `start_date` to the beginning of ' +
     'that week and read forward.\n' +
     '- One kind of action: `action_message`.\n\n' +
+    '**Reads swamp changes, and there is no "changes only" filter.** The `action` values seen ' +
+    'on 2.34.2 are `created`, `viewed` and `updated`, and `viewed` dominates an active ' +
+    'instance. Nothing in the API narrows the log to modifications, so either filter server-side ' +
+    'with `action_message` one value at a time, or fetch a page and drop the `viewed` entries ' +
+    'yourself. The consequence to hold on to: **the newest log entry for a record is frequently ' +
+    'a `viewed`, and is therefore not the newest change to it.** Answering "when was this last ' +
+    'changed" from the first entry you see will usually be wrong.\n\n' +
+    '**`details` does not tell you what changed.** It is a JSON *string* holding a snapshot of ' +
+    'the record after the action — a post-state, with no before value and no field-level diff. ' +
+    'One `updated` entry therefore cannot answer "what changed"; you need two consecutive ' +
+    '`updated` entries for the same record and must compare their snapshots yourself. Say that ' +
+    'plainly to the user rather than presenting a single snapshot as a change.\n\n' +
     'Entries are ordered by Hudu, not by this server, and no total count is returned — so to ' +
-    'find the most recent change to a record, request a page and read it rather than assuming ' +
+    'find the most recent entry for a record, request a page and read it rather than assuming ' +
     'the first entry is newest.\n\n' +
     'Reading the log never alters it. Purging it is a separate tool, hudu_purge_activity_logs, ' +
     'and is destructive.',
   paginated: true,
-  titleField: 'action_message',
+  // The response carries `action`, not `action_message` — that name belongs to
+  // the filter alone. Heading a rendered entry with a field the record does not
+  // have printed the record id instead, which is the least informative value on
+  // it.
+  titleField: 'action',
   filters: {
     user_id: z
       .number()
@@ -195,16 +228,27 @@ const activityLogsSpec: ResourceSpec = {
       .optional()
       .describe(
         'Numeric id of the record whose history you want. Must be sent together with ' +
-          '`resource_type`; on its own it is ignored.',
+          '`resource_type`; on its own it is ignored. Each returned entry carries the same ' +
+          'value as `record_id`, not as `resource_id`.',
       ),
-    resource_type: z.string().optional().describe(RESOURCE_TYPE_NOTE),
+    resource_type: z
+      .string()
+      .optional()
+      .describe(
+        `${RESOURCE_TYPE_NOTE} Each returned entry carries the same value as \`record_type\`, ` +
+          'not as `resource_type`.',
+      ),
     action_message: z
       .string()
       .optional()
       .describe(
-        'Match on the text of the recorded action, e.g. the word used for a create, update or ' +
-          'view. Hudu publishes no list of legal values, so treat this as a text filter and ' +
-          'confirm against an unfiltered sample before relying on a particular wording.',
+        'Match on the text of the recorded action. Note the name: this is the *filter* name. ' +
+          'The matching value comes back on each entry as `action`. No field called ' +
+          '`action_message` exists in the response. `created`, `viewed` and `updated` were the ' +
+          'values seen on Hudu 2.34.2, but Hudu publishes no list of legal values, so confirm ' +
+          'against an unfiltered sample before relying on a particular wording. This is also ' +
+          'the only way to exclude `viewed` events server-side: there is no "changes only" ' +
+          'filter, so ask for one action at a time.',
       ),
     start_date: z
       .string()
@@ -393,7 +437,7 @@ const uploadsSpec: ResourceSpec = {
     'the list as complete. Filter client-side on `uploadable_type` and `uploadable_id` to find ' +
     'the attachments of one record.\n\n' +
     'This server cannot upload files. The Hudu upload endpoint takes multipart/form-data, ' +
-    'which hudu-mcp 0.1.0 does not implement, so there is no create tool here and no way to ' +
+    'which this server does not implement, so there is no create tool here and no way to ' +
     'add an attachment through this interface — tell the user to attach the file in the Hudu ' +
     'web UI. Do not claim a file was uploaded.',
   paginated: false,
@@ -433,7 +477,7 @@ const publicPhotosSpec: ResourceSpec = {
     'the conversation.\n\n' +
     'There is no filter on this endpoint — page through and match `record_id` yourself to find ' +
     'the photos for one article.\n\n' +
-    'Creating and re-pointing public photos needs multipart/form-data, which hudu-mcp 0.1.0 ' +
+    'Creating and re-pointing public photos needs multipart/form-data, which this server ' +
     'does not implement, so this list is the only public-photo operation available here. Use ' +
     'the Hudu web UI to add or change one.',
   paginated: true,

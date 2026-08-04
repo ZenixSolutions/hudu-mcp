@@ -10,7 +10,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -198,3 +198,20 @@ function sourceModules(base = resolve(REPO_ROOT, 'src'), prefix = ''): string[] 
   }
   return found;
 }
+
+describe('the reported version matches the published one', () => {
+  it('SERVER_VERSION equals the version in package.json', async () => {
+    // Three audiences read this constant — the MCP handshake, `--version`, and
+    // the User-Agent — and nothing about the build fails when it drifts from
+    // package.json. It drifted once, silently, between 0.1.0 and 0.2.0.
+    const { SERVER_VERSION } = await import('../../src/server.js');
+    const declared = JSON.parse(readFileSync(resolve(REPO_ROOT, 'package.json'), 'utf8')) as {
+      version: string;
+    };
+
+    expect(
+      SERVER_VERSION,
+      'src/server.ts SERVER_VERSION and package.json version must match; bump both',
+    ).toBe(declared.version);
+  });
+});

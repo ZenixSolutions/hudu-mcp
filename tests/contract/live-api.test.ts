@@ -832,7 +832,7 @@ describe.skipIf(!enabled)('D10: assets read back `fields`, not `custom_fields`',
 });
 
 /* -------------------------------------------------------------------------- */
-/* C4: a rack's contents are unreachable                                      */
+/* C4 / F8: where a rack's contents actually live                             */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -840,8 +840,8 @@ describe.skipIf(!enabled)('D10: assets read back `fields`, not `custom_fields`',
  *
  * `rack_storage_role_id` is excluded deliberately: it is documented as a
  * colour-coded *role*, travels beside `rack_storage_role_name`, `_description`
- * and `_hex_color`, and mistaking it for the cabinet link is precisely the error
- * C4 exists to prevent.
+ * and `_hex_color`, and mistaking it for the cabinet link is the error C4's
+ * surviving half exists to prevent.
  */
 const RACK_REFERENCE = /^(?:rack_storage_id|rack_id|storage_id|rack_storage)$/;
 
@@ -862,8 +862,8 @@ describe.skipIf(!enabled)('C4: a rack storage item carries no reference to its r
     if (items.length === 0) {
       skipWith(
         ctx,
-        'This instance has no rack storage items, so C4 could not be checked. An empty rack ' +
-          'inventory is not drift.',
+        'This instance has no rack storage items, so this half of C4 could not be checked. An ' +
+          'empty rack inventory is not drift.',
       );
     }
 
@@ -874,10 +874,10 @@ describe.skipIf(!enabled)('C4: a rack storage item carries no reference to its r
       references,
       `C4 (significant finding): a rack storage item on this instance carries ` +
         `[${references.join(', ')}], a reference back to its rack that the captured contract ` +
-        'does not document. C4 states that "what is mounted in rack 12?" is unanswerable, and ' +
-        'src/tools/racks.ts says so to every caller. If this field is real, that limitation ' +
-        'should be lifted: add the filter or the lookup, rewrite C4, and correct the module ' +
-        `docstring in src/tools/racks.ts. Observed keys: [${keys.join(', ')}].`,
+        'does not document. What survives of C4 is exactly this claim — that the item side ' +
+        'carries no cabinet link, so hudu_list_rack_storage_items cannot be grouped by rack. ' +
+        'If this field is real, add the filter or the lookup and rewrite what C4 still asserts ' +
+        `in docs/reference/spec-defects.md. Observed keys: [${keys.join(', ')}].`,
     ).toEqual([]);
 
     // The positive half of the same claim: the role id is present and is not it.
@@ -886,6 +886,56 @@ describe.skipIf(!enabled)('C4: a rack storage item carries no reference to its r
       'C4: a rack storage item no longer carries `rack_storage_role_id`. The tool descriptions ' +
         `in src/tools/racks.ts are written around that field. Observed keys: [${keys.join(', ')}].`,
     ).toContain('rack_storage_role_id');
+  });
+});
+
+describe.skipIf(!enabled)('F8: the rack record carries its own per-unit elevation', () => {
+  it('a rack storage carries front_items and rear_items', async (ctx) => {
+    const endpoint = endpointFor('/rack_storages');
+    const response = await probe('/rack_storages');
+
+    if (response.status !== 200) {
+      skipWith(ctx, `GET /rack_storages answered HTTP ${response.status} on this instance.`);
+    }
+
+    const racks = listOf(response, endpoint).filter(isRecord);
+    if (racks.length === 0) {
+      skipWith(ctx, 'This instance has no racks, so F8 could not be checked.');
+    }
+
+    const keys = Object.keys(racks[0]!);
+
+    // This is the claim C4 got wrong, so it is the one worth pinning. If a Hudu
+    // version stops returning the elevation, every rack tool description and
+    // docs/limitations.md are wrong again — in the opposite direction.
+    expect(
+      keys,
+      'F8: a rack record on this instance carries neither `front_items` nor `rear_items`. The ' +
+        'rack tool descriptions in src/tools/racks.ts tell callers to read one rack’s ' +
+        'contents off that record, docs/limitations.md says C4 was wrong, and both depend on ' +
+        `these fields. Observed keys: [${keys.join(', ')}].`,
+    ).toEqual(expect.arrayContaining(['front_items', 'rear_items']));
+
+    const slots = racks[0]!['front_items'];
+    if (!Array.isArray(slots) || slots.length === 0) {
+      skipWith(ctx, 'This rack has an empty front elevation, so the slot shape was not checked.');
+    }
+
+    const slot = slots.find(isRecord);
+    if (slot === undefined) skipWith(ctx, 'Front elevation entries are not objects on this rack.');
+
+    // Named individually rather than as a set: each one is quoted in a tool
+    // description, and a missing one means that description is now guidance
+    // toward a field the caller will not find.
+    expect(
+      Object.keys(slot),
+      'F8: a rack elevation slot no longer has the shape the rack tool descriptions quote. ' +
+        'Note that `reserved_messsage` is Hudu’s own spelling, with three s’s, and ' +
+        'is passed through unchanged; a fix upstream will fail this assertion. Observed slot ' +
+        `keys: [${Object.keys(slot).join(', ')}].`,
+    ).toEqual(
+      expect.arrayContaining(['number', 'has_items', 'items', 'is_reserved', 'reserved_messsage']),
+    );
   });
 });
 

@@ -28,7 +28,7 @@ later without you asking; pin it if that matters:
   "mcpServers": {
     "hudu": {
       "command": "npx",
-      "args": ["-y", "@zenixsolutions/hudu-mcp@0.1.0"],
+      "args": ["-y", "@zenixsolutions/hudu-mcp@0.2.0"],
       "env": {
         "HUDU_BASE_URL": "https://hudu.example.com",
         "HUDU_API_KEY": "your-api-key"
@@ -196,20 +196,35 @@ its arguments, and the environment. Everything else is protocol.
 
 ## Verifying an installation
 
-Three flags run without contacting Hudu:
+Three flags answer before a client is involved. Two of them make no request at
+all; `--check` deliberately makes one, because a configuration that parses is
+not the same thing as a configuration that works:
 
-| Command              | What it proves                                              | Exit code                         |
-| -------------------- | ----------------------------------------------------------- | --------------------------------- |
-| `hudu-mcp --version` | The package is installed and executable. Prints `0.1.0`.    | 0                                 |
-| `hudu-mcp --help`    | Prints usage, including every environment variable.         | 0                                 |
-| `hudu-mcp --check`   | The configuration in the environment is valid and complete. | 0, or 78 on invalid configuration |
+| Command              | What it proves                                           | Exit code                                                               |
+| -------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `hudu-mcp --version` | The package is installed and executable. Prints `0.2.0`. | 0                                                                       |
+| `hudu-mcp --help`    | Prints usage, including every environment variable.      | 0                                                                       |
+| `hudu-mcp --check`   | The environment is complete _and_ the key works.         | 0, 78 on invalid configuration, 69 when Hudu refused or was unreachable |
 
 `--version` and `--help` need no environment at all. `--check` needs
-`HUDU_BASE_URL` and `HUDU_API_KEY`, and validates them without making a request:
+`HUDU_BASE_URL` and `HUDU_API_KEY`, and calls `GET /api_info` with them — the
+one endpoint that needs no ids and no scope beyond a working key — so a revoked
+or mistyped key fails here rather than surfacing later as empty results:
 
 ```bash
 HUDU_BASE_URL=https://hudu.example.com HUDU_API_KEY=... hudu-mcp --check
-hudu-mcp: configuration is valid.
+hudu-mcp: --check: reached Hudu 2.34.2 at https://hudu.example.com. GET /api_info succeeded, ...
+```
+
+It does not prove the key's **scope**: password access, destructive actions and
+exports are fixed at key creation and `/api_info` needs none of them.
+
+Where there is no network — a container build, an image test — `--check
+--offline` validates the configuration syntax and makes no request. It says so
+in its output, and it cannot tell a live key from a dead one:
+
+```bash
+HUDU_BASE_URL=https://hudu.example.com HUDU_API_KEY=... hudu-mcp --check --offline
 ```
 
 A fourth flag builds the full tool set and prints it, which requires valid
@@ -220,14 +235,14 @@ HUDU_BASE_URL=https://hudu.example.com HUDU_API_KEY=... hudu-mcp --list-tools
 ```
 
 Each line is the tool name, its operation class, and its title, followed by a
-count and then the withheld tools with the reason for each. Expect 70 registered
-and 19 withheld with default settings, 40 and 49 under `HUDU_READ_ONLY=1`, and 89
-with `HUDU_ALLOW_DESTRUCTIVE`, `HUDU_ALLOW_EXPORTS` and
-`HUDU_ALLOW_PASSWORD_REVEAL` all set.
+count and then the withheld tools with the reason for each. Expect 67 registered
+and 22 withheld with default settings, 40 and 49 under `HUDU_READ_ONLY=1`, and 89
+with `HUDU_ALLOW_DESTRUCTIVE`, `HUDU_ALLOW_EXPORTS`, `HUDU_ALLOW_PASSWORD_REVEAL`
+and `HUDU_ALLOW_PASSWORD_WRITE` all set.
 
-To prove the key and URL actually work, call `hudu_get_api_info` from your client
-once it is connected. It takes no arguments and needs no permissions beyond a
-valid key.
+`--check` already proved the key and URL work. To prove the _client_ is wired to
+this server as well, call `hudu_get_api_info` from it once connected: it is the
+same request, made through the whole stack.
 
 ## Uninstalling
 

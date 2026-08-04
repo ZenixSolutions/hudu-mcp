@@ -15,13 +15,19 @@ import {
   annotationsFor,
   CLASS_REQUIREMENTS,
   OperationClass,
+  type ToolAnnotations,
 } from '../../src/security/classification.js';
 import { testServer } from '../helpers/fixtures.js';
 
 /** Every gate open, so the assertions cover the widest possible surface. */
 const fullServer = testServer(
   { json: {} },
-  { allowDestructive: true, allowExports: true, allowPasswordReveal: true },
+  {
+    allowDestructive: true,
+    allowExports: true,
+    allowPasswordReveal: true,
+    allowPasswordWrite: true,
+  },
 );
 
 const allTools = fullServer.built.tools;
@@ -66,6 +72,7 @@ describe('tool names', () => {
       { allowDestructive: true },
       { allowExports: true },
       { allowPasswordReveal: true },
+      { allowPasswordWrite: true },
     ]) {
       const names = testServer({ json: {} }, overrides).built.tools.map((tool) => tool.name);
       expect(new Set(names).size, JSON.stringify(overrides)).toBe(names.length);
@@ -82,16 +89,81 @@ describe('tool names', () => {
   });
 });
 
+/**
+ * The annotation table, written out longhand.
+ *
+ * `annotationsFor` is the implementation; this is the specification, and the two
+ * are compared. Restating the numbers rather than calling the function is the
+ * whole point — 0.1.0 shipped `destructiveHint: false` on all thirty mutating
+ * tools, including `hudu_archive_company` and `hudu_archive_password`, and a
+ * test that asked the implementation what it thought would have agreed with it.
+ *
+ * `Record<OperationClass, ...>` is load-bearing: adding a sixth class without
+ * deciding its annotations fails to compile here rather than shipping a tool
+ * that quietly tells clients it is harmless.
+ */
+const EXPECTED_ANNOTATIONS: Record<OperationClass, ToolAnnotations> = {
+  [OperationClass.Read]: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  // Additive: brings a new record into existence, touches no existing one.
+  [OperationClass.Create]: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  // Destructive because a PUT replaces prior field values, and idempotent
+  // because replaying it lands in the same state. The pair is the case that
+  // shows the two hints are orthogonal rather than opposites.
+  [OperationClass.Update]: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  // Bulk export moves data out of the tenant; nothing about it is additive.
+  [OperationClass.Admin]: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  [OperationClass.Destructive]: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+};
+
 describe('annotations match the operation class', () => {
+  it.each(Object.entries(EXPECTED_ANNOTATIONS))(
+    '%s is annotated exactly as the table says',
+    (operationClass, expected) => {
+      expect(annotationsFor(operationClass as OperationClass)).toEqual(expected);
+    },
+  );
+
   it.each(allTools.map((tool) => [tool.name, tool.operationClass] as const))(
-    '%s (%s) is annotated exactly as its class dictates',
+    '%s (%s) carries the annotations its class dictates',
     (name, operationClass) => {
       const tool = fullServer.tool(name);
       expect(tool.annotations, `${name} has hand-set annotations`).toEqual(
-        annotationsFor(operationClass),
+        EXPECTED_ANNOTATIONS[operationClass],
       );
     },
   );
+
+  it('exercises every class in the table, so no row goes stale', () => {
+    const classes = new Set(allTools.map((tool) => tool.operationClass));
+    for (const operationClass of Object.keys(EXPECTED_ANNOTATIONS)) {
+      expect(classes, `no registered tool is classed ${operationClass}`).toContain(operationClass);
+    }
+  });
 
   it('only Read tools claim readOnlyHint', () => {
     for (const tool of allTools) {
@@ -101,11 +173,41 @@ describe('annotations match the operation class', () => {
     }
   });
 
-  it('only Destructive tools claim destructiveHint', () => {
+  /**
+   * Regression. The MCP definition is that `destructiveHint: true` means the
+   * tool **may perform destructive updates** and false means it performs **only
+   * additive** ones — not "this tool deletes things". 0.1.0 read it the narrow
+   * way and annotated all thirty mutating tools false, so a client that prompts
+   * from annotations prompted for none of them, `hudu_archive_company` and
+   * `hudu_archive_password` included.
+   */
+  it('claims destructiveHint for everything that is not purely additive', () => {
+    const additive: readonly OperationClass[] = [OperationClass.Read, OperationClass.Create];
+
     for (const tool of allTools) {
       expect(tool.annotations.destructiveHint, tool.name).toBe(
-        tool.operationClass === OperationClass.Destructive,
+        !additive.includes(tool.operationClass),
       );
+    }
+  });
+
+  it.each(['hudu_archive_company', 'hudu_archive_password', 'hudu_update_password'])(
+    '%s warns a client that it is destructive',
+    (name) => {
+      expect(
+        fullServer.tool(name).annotations.destructiveHint,
+        `${name} overwrites or hides an existing record and must say so`,
+      ).toBe(true);
+    },
+  );
+
+  it('keeps idempotentHint true on Update, since destructive and idempotent are orthogonal', () => {
+    const updates = allTools.filter((tool) => tool.operationClass === OperationClass.Update);
+
+    expect(updates.length).toBeGreaterThan(5);
+    for (const tool of updates) {
+      expect(tool.annotations.idempotentHint, tool.name).toBe(true);
+      expect(tool.annotations.destructiveHint, tool.name).toBe(true);
     }
   });
 
@@ -206,6 +308,7 @@ describe('no tool accepts a credential or a gate override as an argument', () =>
     'allow_destructive',
     'allow_exports',
     'allow_password_reveal',
+    'allow_password_write',
     'read_only',
     'reveal',
     'force',

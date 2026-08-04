@@ -46,12 +46,40 @@ plain language what is and is not known. "How many assets does this client have?
 is not a question the API answers; it is a question you answer by paging to the
 end and counting.
 
+**Nor does the API aggregate anything, anywhere.** There is no count endpoint, no
+`group_by`, no sum, no facet and no summary of any kind on any collection — not
+just no total on a page. Every "how many", "which is most", "what is the
+breakdown by" and "how has this changed over time" is client-side arithmetic over
+records you paged through yourself. Combined with C2 below, that means some of
+those questions have no answer at all through this API: where a collection does
+not paginate and its full response does not fit the output budget, there is no
+way to enumerate it and therefore no way to count it.
+
 **Five collections have no pagination whatsoever (C2).** `/networks`,
 `/ip_addresses`, `/rack_storages`, `/rack_storage_items` and `/uploads` document
 neither `page` nor `page_size`. The corresponding tools send neither and report
 in the envelope that there is no further page to request. On a populated IPAM
 range that is a very large single response with no way to page it — filter, or
 accept a client-side truncation you cannot page past.
+
+**Six tools have no paging controls, and on some of them a truncated record is
+unreachable.** The five list tools above — `hudu_list_networks`,
+`hudu_list_ip_addresses`, `hudu_list_rack_storages`,
+`hudu_list_rack_storage_items`, `hudu_list_uploads` — plus
+`hudu_lookup_integration_cards`, whose `/cards/lookup` endpoint documents no
+`page` either. All six report `pagination_supported: false` in the envelope.
+
+The consequence is worth stating separately from C2, because it is the case where
+this server cannot show you data that exists. When one of those responses exceeds
+the 25,000-character output budget, records are dropped to make it fit. There is
+no next page to fetch them from and no `page_size` to lower, so the only remedy
+is a narrower filter — and where the endpoint offers no filter narrow enough, the
+dropped records cannot be reached through this server at all.
+`hudu_list_rack_storage_items` is the worst of them: its filters are all
+instance-wide, and none of them scopes to a rack. `/uploads` documents no filter
+whatsoever. The envelope says so in `truncation_note` and in a regenerated
+`pagination_note` rather than implying a page that would fetch them; do not
+describe a truncated response from one of these tools as a full inventory.
 
 **One collection paginates without a size control (C3).**
 `GET /asset_layouts` documents `page` but not `page_size`, so
@@ -64,20 +92,85 @@ and nothing else. This client clamps at 100 — a value it has validated — and
 rejects larger requests at the schema rather than letting the server silently
 alter them. If your instance accepts more, this client will still not send it.
 
+## A correction: a rack's contents can be listed (C4)
+
+**A rack's contents can be listed after all — C4 was wrong.** This page
+previously called it the sharpest gap in the contract: `RackStorageItem` carries
+no reference to its rack, no filter scopes items to a rack, therefore "what is
+mounted in rack 12?" had no answer. Every premise was true and the conclusion was
+not. The link is on the **rack**, not on the item: `GET /rack_storages` and
+`GET /rack_storages/{id}` return `front_items` and `rear_items` on each rack —
+one slot per rack unit on each face, each slot listing what is mounted there with
+`asset_id` and `asset_name` — which is a complete per-unit elevation. Call
+`hudu_get_rack_storage` with the rack id and read it. The claim survived because
+those fields are absent from the `RackStorage` definition in the captured
+contract, and a schema that omits a field looks exactly like an API that lacks
+one; it was corrected by an external reviewer calling the endpoint. See C4 and F8
+in [spec-defects.md](reference/spec-defects.md).
+
+What remains true is narrower: `hudu_list_rack_storage_items` is instance-wide
+and cannot be grouped by cabinet, because a rack storage item still carries no
+rack id. It answers "where is asset X mounted?" — filter it by `asset_id` — and
+it is not a way to list one rack.
+
 ## Questions the API cannot answer
 
-**A rack's contents cannot be listed (C4).** This is the sharpest gap in the
-contract. `RackStorageItem` carries no reference to its rack: the string
-`rack_storage_id` does not appear anywhere in the API, and no list filter scopes
-items to a rack. `rack_storage_role_id` is documented as "the unique ID of the
-rack storage role" and travels beside `rack_storage_role_name`, `_description`
-and `_hex_color` — a colour-coded classification, not the cabinet. **"What is
-mounted in rack 12?" has no documented answer.** The reverse direction works:
-filter rack items by `asset_id` to find where a known device is racked.
+**Archived companies cannot be listed, and their absence is silent.**
+`GET /companies` returns only unarchived companies and documents no parameter
+that changes that. On the Hudu 2.34.2 instance this was measured against, 27
+companies existed, `hudu_list_companies` returned 22, and 64 assets belonged to
+the five it left out. Sending `archived` does not help: `?archived=true` and
+`?archived=false` both returned the same 22 records, and `/companies` ignores an
+unrecognised query parameter rather than rejecting it the way `/networks` does
+(F4 is per-endpoint, not global) — so an `archived` argument would look like a
+working filter and do nothing, which is why none was added. The exclusion is
+disclosed instead: `hudu_list_companies` says so in its description, and every
+result carries it in `completeness_caveat` and in `pagination_note`.
+`hudu_get_company` does reach an archived company by id, so a `company_id` that
+no listing accounts for is resolvable that way. Never quote the length of this
+list as the number of companies on the instance.
+
+**The activity log records what happened, not what changed.** Each entry's
+`details` is a JSON _string_ holding a snapshot of the record **after** the
+action — a post-state, with no before value and no field-level diff. A single
+`updated` entry therefore cannot answer "what changed"; that needs two
+consecutive `updated` entries for the same record, compared by hand. There is no
+diff endpoint and no version history in this API.
+
+**`viewed` events swamp the activity log and there is no changes-only filter.**
+The `action` values observed on 2.34.2 are `created`, `viewed` and `updated`, and
+`viewed` dominates an active instance. Nothing in the API narrows the log to
+modifications: the only server-side control is the `action_message` filter, which
+takes one value at a time, so excluding views means either one request per action
+value or dropping them client-side. The consequence to hold on to is that **the
+newest log entry for a record is frequently a view, and is therefore not its
+newest change** — answering "when was this last modified" from the first entry
+returned will usually be wrong. There is also no end-date filter, only
+`start_date`.
+
+**Articles with no company cannot be selected for.** An article created without a
+`company_id` is global, and `GET /articles` documents no filter that isolates
+those — `company_id` selects one company's articles and omitting it returns
+everything. Request without `company_id` and select on a null `company_id`
+yourself.
+
+**Neither `password_type` nor `network_type` classifies anything usable.** Both
+look like the field that would answer "which of these are network device
+credentials?" or "which of these subnets are guest networks?", and neither does.
+`password_type` is free text with no published vocabulary and came back `null` on
+every password record on the measured instance, so it classifies nothing there.
+`network_type` is an integer with no published mapping (D1) and every network on
+the same instance carried `0` (F7) — as a filter it would have selected every
+network or none. Both are single-instance observations rather than published
+contract, and both are a reason to populate the fields consistently rather than a
+reason to ignore them; but as things stand, searching `name` and `description`
+text is the only route to either question.
 
 **There is no locations endpoint (C5).** Networks and racks both carry a
 `location_id`, and nothing lists or resolves those ids. They can be copied from
-an existing record and nothing else.
+an existing record and nothing else — though a live rack record does echo an
+undocumented `location_name` and `location_url` beside the id (F8), so a rack's
+site can at least be named.
 
 **Exports cannot be retrieved (C6).** `POST /exports` and `POST /s3_exports`
 start an export. This version documents no `GET /exports`, no `GET /exports/{id}`
@@ -117,7 +210,7 @@ exist. None of them is being withheld by a gate.
 | Relations (update)     | C16     | Delete and recreate                                                       |
 | Matchers (create)      | C17     | They appear when an integration syncs                                     |
 
-## Not implemented in 0.1.0
+## Not implemented
 
 **File upload (E1).** `POST /uploads`, `POST /public_photos` and
 `PUT /public_photos/{id}` are `multipart/form-data`, and the contract documents
@@ -137,7 +230,7 @@ rewrite the field definitions of every asset on the layout. `fields` is therefor
 absent from `hudu_update_asset_layout`. Supply field definitions at creation, or
 edit them in the web UI.
 
-**No remote transport.** 0.1.0 speaks stdio only. See
+**No remote transport.** This server speaks stdio only. See
 [compatibility.md](compatibility.md).
 
 ## Errors, rate limits and scope
@@ -192,7 +285,10 @@ Other undocumented semantics, each recorded in the tool that exposes it:
 - `max_wattage` and `power_draw` carry no unit (D3).
 - Rack unit numbering is unexplained: which end of the cabinet holds the lowest
   unit, whether `start_unit`–`end_unit` is inclusive, and what happens on overlap
-  are all absent, and no conflict response is documented (D4).
+  are all absent, and no conflict response is documented (D4). The elevation on
+  the rack record numbers every slot, so the direction in use on your instance
+  can be read off `hudu_get_rack_storage`; an undocumented `descending_units`
+  field is also present, but nothing published says what it contains (F8).
 - `IpAddress.status` values appear only in prose, not as a schema enum (D5), and
   the prose is wrong about casing: a live instance stored `Assigned`, `DHCP`,
   `Reserved` and `Unassigned` (F7). Neither vocabulary is enforced here.

@@ -1,6 +1,6 @@
 {
   "name": "@zenixsolutions/hudu-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Community MCP server for the Hudu IT documentation REST API. Full documented API surface, secret-safe by default.",
   "keywords": [
     "mcp",

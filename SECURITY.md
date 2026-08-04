@@ -46,10 +46,11 @@ We do not operate a paid bug bounty.
 
 ## Supported versions
 
-| Version | Supported                   |
-| ------- | --------------------------- |
-| 0.1.x   | Yes                         |
-| < 0.1.0 | No — no such release exists |
+| Version | Supported                                                  |
+| ------- | ---------------------------------------------------------- |
+| 0.2.x   | Yes                                                        |
+| 0.1.x   | No — superseded by 0.2.0, which fixes two security defects |
+| < 0.1.0 | No — no such release exists                                |
 
 Only the latest published version receives security fixes. Pre-1.0, fixes are
 released as a new patch version rather than backported to an older line.
@@ -87,13 +88,31 @@ substitutes for it.
   unbounded call returns every stored credential and TOTP seed the key can see.
   `src/security/secrets.ts` removes those fields recursively from every tool
   response on the way out, in `executeTool`, so a tool cannot forget to do it.
-  A placeholder is left behind so a model can tell that a value exists.
-- **Capability gates are environment-only.** Password reveal, destructive
-  operations, exports and read-only mode are controlled by `HUDU_ALLOW_*` and
-  `HUDU_READ_ONLY` environment variables. They are never tool arguments. A model
-  cannot request a capability the operator did not enable, and a gated tool is
-  not registered at all rather than registered-and-refusing — a tool the model
-  cannot see is a tool it cannot be talked into calling.
+  A withheld value becomes `null` with a sibling `password_redacted: true` (or
+  `otp_secret_redacted: true`), so a model can tell that a value exists without
+  ever seeing a string under a secret's name. A field that genuinely stores
+  nothing is passed through as `null` with no flag.
+- **Capability gates are environment-only.** Read-only mode, destructive
+  operations, password reveal, password writes and exports are controlled by
+  `HUDU_READ_ONLY` and the `HUDU_ALLOW_*` variables. They are never tool
+  arguments. A model cannot request a capability the operator did not enable,
+  and a gated tool is not registered at all rather than
+  registered-and-refusing — a tool the model cannot see is a tool it cannot be
+  talked into calling.
+- **Reading a credential and writing one are separate gates.**
+  `HUDU_ALLOW_PASSWORD_REVEAL` registers `hudu_reveal_password`;
+  `HUDU_ALLOW_PASSWORD_WRITE` registers `hudu_create_password`,
+  `hudu_update_password` and `hudu_archive_password`, and combines with
+  `HUDU_ALLOW_DESTRUCTIVE` on `hudu_delete_password`. Neither opens the other.
+  Overwriting the only copy of a working credential is a real loss even though
+  no secret leaves the building, and an operator who wants an agent to document
+  a newly issued credential should not have to grant it vault-wide reads to do
+  so.
+- **Annotations tell a client the truth about what a tool does.** They are
+  derived from the operation class, not hand-set. `Update`, `Admin` and
+  `Destructive` tools carry `destructiveHint: true`, because the protocol
+  defines that as "may perform destructive updates" against "only additive" —
+  and an overwrite with no undo is destructive by that definition.
 - **Credentials are never accepted as tool arguments.** `HUDU_API_KEY` comes
   from the environment. A key supplied through a tool call would be a key the
   model has seen.
@@ -126,10 +145,14 @@ substitutes for it.
 
 ### Recommended deployment
 
-- Create a dedicated, least-privilege API key for this server.
+- Create a dedicated, least-privilege API key for this server. Note that Hudu's
+  password scope covers all REST actions on passwords and does not separate
+  reads from writes; the two gates in this server do.
 - Start with `HUDU_READ_ONLY=1` and leave every `HUDU_ALLOW_*` flag unset.
 - Enable a gate only for a specific, understood use, and only when the key was
   created with the matching scope.
+- Verify what you deployed with `hudu-mcp --list-tools`. It prints what is
+  registered and, for each withheld tool, the variable that would register it.
 - Keep the key out of shell history and process listings; supply it through the
   MCP client's environment configuration rather than an inline command.
 - Review `docs/reference/spec-defects.md` section A. It lists the

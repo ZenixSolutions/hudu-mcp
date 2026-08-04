@@ -46,6 +46,31 @@ const updatedAtDescription =
   'ISO-8601 range as "start,end". Either side may be omitted — "2026-01-01T00:00:00Z," means ' +
   'everything changed since that moment.';
 
+/**
+ * How `name` and `search` differ, which the captured contract never says.
+ *
+ * Measured on Hudu 2.34.2 against this endpoint: `hudu_list_assets{name: "UDM
+ * Pro"}` matched the whole name, case-insensitively, and *excluded* "UDM Pro
+ * Max"; `{search: "UDM"}` matched as a substring and returned both. Neither
+ * behaviour is documented at the parameter level, and a caller who assumes
+ * `name` is a substring match silently misses records — the failure is a short
+ * answer that looks complete, not an error.
+ *
+ * One instance, so it is worded as an observation rather than as a contract.
+ */
+const NAME_MATCHING =
+  'Matching, observed on Hudu 2.34.2 and documented nowhere: `name` matched the whole value ' +
+  'case-insensitively rather than as a substring — `name: "UDM Pro"` excluded "UDM Pro Max". ' +
+  'That is one instance rather than a published contract, so treat it as a working assumption: ' +
+  'an empty result here means nothing matched the name in full, not that no such record exists.';
+
+const SEARCH_MATCHING =
+  'Matching, observed on Hudu 2.34.2 and documented nowhere: `search` matched as a substring ' +
+  'where `name` matched the whole value — `search: "UDM"` returned both "UDM Pro" and "UDM Pro ' +
+  'Max", while `name: "UDM Pro"` returned only the first. That is one instance rather than a ' +
+  'published contract, but it is the reason to reach for this parameter when you hold a ' +
+  'fragment of a name rather than all of it.';
+
 const ASSET_SUMMARY =
   'An asset is any documented thing that belongs to a company — a server, a workstation, a ' +
   'firewall, a licence, a contact. The asset layout it was created from decides which custom ' +
@@ -162,7 +187,7 @@ export const assetsListSpec: ResourceSpec = {
         'Return the single asset with this id. Useful when you hold an asset id and need its ' +
           '`company_id` before you can write to it.',
       ),
-    name: z.string().optional().describe('Match against the asset name.'),
+    name: z.string().optional().describe(`Match against the asset name. ${NAME_MATCHING}`),
     primary_serial: z.string().optional().describe('Match against the serial number.'),
     asset_layout_id: z
       .number()
@@ -178,7 +203,9 @@ export const assetsListSpec: ResourceSpec = {
     search: z
       .string()
       .optional()
-      .describe('Broad text search across asset fields. The best first filter for a name.'),
+      .describe(
+        `Broad text search across asset fields. The best first filter for a name. ${SEARCH_MATCHING}`,
+      ),
     updated_at: z.string().optional().describe(updatedAtDescription),
   },
 };
@@ -253,8 +280,14 @@ const getAssetTool = defineTool({
     'If no such asset exists under that company this tool returns `found: false` with an ' +
     'explanatory notice rather than a record. Read that as "no such asset here", not as an ' +
     'asset with no values — and check `company_id` before concluding the asset is gone, ' +
-    'because an asset owned by another company is unreachable through this path.',
-  inputSchema: { ...companyIdArg, ...assetIdArg, ...responseFormatArg },
+    'because an asset owned by another company is unreachable through this path.\n\n' +
+    '`fields` narrows the record to the top-level keys you name, exactly as it does on the list ' +
+    'tools. It is worth using here: an asset carries its whole layout in `fields`, which on a ' +
+    'rich layout is most of the response. Note the collision of names — the `fields` argument ' +
+    'selects top-level keys, and "fields" is itself one of them, so ["id","name","fields"] keeps ' +
+    'the custom values and drops everything else. The projection is applied by this server after ' +
+    'the record is fetched, so it reduces what you read, not what Hudu sends.',
+  inputSchema: { ...companyIdArg, ...assetIdArg, ...fieldsArg, ...responseFormatArg },
   operationClass: OperationClass.Read,
   handler: async (args, { client }) => {
     const companyId = args['company_id'] as number;
@@ -278,8 +311,16 @@ const getAssetTool = defineTool({
       };
     }
 
+    // The same projection the list tools run, over a one-element array. This
+    // tool is hand-written because assets are read per company, and it was
+    // therefore missed when `fields` was added to the generated get tools: the
+    // argument was accepted and silently dropped, which is worse than not
+    // offering it — the caller reads the whole asset believing it asked for two
+    // keys of it, and nothing in the response says otherwise.
+    const projected = projectFields([record], args['fields'] as string[] | undefined)[0] ?? record;
+
     return {
-      data: record,
+      data: projected,
       markdown:
         args['response_format'] === ResponseFormat.Markdown
           ? (data): string => renderRecordMarkdown('Asset', data)
@@ -522,7 +563,10 @@ export const assetLayoutsSpec: ResourceSpec = {
   paginated: true,
   pageSizeSupported: false,
   filters: {
-    name: z.string().optional().describe('Match against the layout name, e.g. "Server".'),
+    name: z
+      .string()
+      .optional()
+      .describe(`Match against the layout name, e.g. "Server". ${NAME_MATCHING}`),
     slug: z.string().optional().describe('URL slug, if you already know it.'),
     updated_at: z.string().optional().describe(updatedAtDescription),
   },

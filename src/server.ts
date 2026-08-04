@@ -16,7 +16,14 @@ import { executeTool, prepareTool, type PreparedTool, shouldRegister } from './t
 import { allToolDefinitions } from './tools/index.js';
 
 export const SERVER_NAME = 'hudu-mcp-server';
-export const SERVER_VERSION = '0.1.0';
+/**
+ * Kept in step with `package.json` by a test, not by discipline.
+ *
+ * It is the version reported over MCP, printed by `--version`, and sent in the
+ * User-Agent, so a stale value here misreports the server to three different
+ * audiences at once — and nothing about the build fails when it drifts.
+ */
+export const SERVER_VERSION = '0.2.0';
 
 export interface BuildServerOptions {
   readonly config?: Config;
@@ -59,6 +66,9 @@ function withholdReason(tool: ReturnType<typeof prepareTool>, config: Config): s
   }
   if (tool.definition.requiresPasswordReveal === true && !config.allowPasswordReveal) {
     return 'HUDU_ALLOW_PASSWORD_REVEAL is not set.';
+  }
+  if (tool.definition.requiresPasswordWrite === true && !config.allowPasswordWrite) {
+    return 'HUDU_ALLOW_PASSWORD_WRITE is not set.';
   }
 
   /* c8 ignore next -- unreachable: shouldRegister withholds for one of the above */
