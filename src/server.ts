@@ -13,7 +13,8 @@ import { HuduClient, type HuduClientDeps } from './api/client.js';
 import { type Config, loadConfig } from './config.js';
 import { CLASS_REQUIREMENTS } from './security/classification.js';
 import { executeTool, prepareTool, type PreparedTool, shouldRegister } from './tools/define.js';
-import { allToolDefinitions } from './tools/index.js';
+import { allToolDefinitions, assertUniqueNames } from './tools/index.js';
+import { allWorkflowDefinitions } from './workflows/index.js';
 
 export const SERVER_NAME = 'hudu-mcp-server';
 /**
@@ -98,7 +99,18 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
   const registered: PreparedTool[] = [];
   const withheld: { name: string; reason: string }[] = [];
 
-  for (const definition of allToolDefinitions()) {
+  // Atomic tools first, then the composite ones. Clients present tools in the
+  // order given, and a model scanning the list should meet the per-endpoint
+  // surface before the shortcuts that sit on top of it — a workflow is the
+  // better call when it fits, but it fits fewer questions.
+  //
+  // Uniqueness is re-checked across the union: `allToolDefinitions` guards its
+  // own registry, and a collision between an atomic tool and a workflow is the
+  // likeliest kind, since both are named after the thing they operate on.
+  const definitions = [...allToolDefinitions(), ...allWorkflowDefinitions()];
+  assertUniqueNames(definitions);
+
+  for (const definition of definitions) {
     const prepared = prepareTool(definition);
 
     if (!shouldRegister(definition, config)) {

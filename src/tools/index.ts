@@ -43,8 +43,13 @@ export function allToolDefinitions(): ToolDefinition[] {
  * accept the second registration and silently shadow the first, producing a
  * server whose behaviour depends on module import order — the kind of defect
  * that survives a whole test suite and then surprises someone in production.
+ *
+ * Exported because the registry checked here is only half the surface: the
+ * workflow layer contributes the rest, and a collision between the two is the
+ * likeliest kind — a composite tool is named after the question it answers, and
+ * so is the atomic tool nearest to it. `server.ts` re-runs this over the union.
  */
-function assertUniqueNames(tools: readonly ToolDefinition[]): void {
+export function assertUniqueNames(tools: readonly ToolDefinition[]): void {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
 

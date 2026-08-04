@@ -15,8 +15,17 @@
  * remember it.
  */
 
-/** Fields removed from every response by default. */
-export const SECRET_FIELDS = ['password', 'otp_secret'] as const;
+/**
+ * Fields removed from every response by default.
+ *
+ * `encrypted_password_value` is here because the activity-log schema declares
+ * it. `/activity_logs` is not scope-gated the way the password endpoints are, so
+ * an entry carrying one would reach a caller whose key cannot read
+ * `/asset_passwords` at all — the gate and the data would disagree. It was null
+ * in everything observed on 2.34.2, which is exactly the situation where a
+ * structural guard is cheap and a discovered leak is not.
+ */
+export const SECRET_FIELDS = ['password', 'otp_secret', 'encrypted_password_value'] as const;
 
 export type SecretField = (typeof SECRET_FIELDS)[number];
 

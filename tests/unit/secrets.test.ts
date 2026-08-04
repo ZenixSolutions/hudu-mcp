@@ -26,8 +26,26 @@ import {
 } from '../helpers/fixtures.js';
 
 describe('SECRET_FIELDS', () => {
-  it('covers exactly the two required Asset_Password secrets', () => {
-    expect([...SECRET_FIELDS]).toEqual(['password', 'otp_secret']);
+  it('covers the Asset_Password secrets and the activity-log one', () => {
+    // `password` and `otp_secret` are required properties of Asset_Password, so
+    // they arrive on every record of a list a password-scoped key can read.
+    //
+    // `encrypted_password_value` is declared on the activity-log schema, which
+    // is *not* scope-gated the way the password endpoints are — so an entry
+    // carrying one would reach a caller whose key cannot read /asset_passwords
+    // at all, and the gate and the data would disagree. It was null in
+    // everything observed on 2.34.2, which is the cheap moment to guard it.
+    expect([...SECRET_FIELDS]).toEqual(['password', 'otp_secret', 'encrypted_password_value']);
+  });
+
+  it('strips the activity-log key wherever it is nested', () => {
+    const stripped = stripSecrets({
+      action: 'updated',
+      details: { fields: [{ label: 'API key', encrypted_password_value: 'zzz-real-value' }] },
+    });
+
+    expect(JSON.stringify(stripped)).not.toContain('zzz-real-value');
+    expect(findSecretFields(stripped)).toEqual([]);
   });
 });
 
