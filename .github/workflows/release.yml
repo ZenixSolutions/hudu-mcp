@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Validate and publish
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # Required for npm provenance, which signs the published tarball with a
+      # statement about the workflow and commit that produced it.
+      id-token: write
+
+    steps:
+      # First step on purpose. A missing token discovered after publishing would
+      # mean a tag exists for a version that is not on npm, so it is checked
+      # before anything else happens.
+      - name: Verify publish credentials are configured
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${NPM_TOKEN}" ]; then
+            echo "::error::The NPM_TOKEN repository secret is not set, so this release cannot publish."
+            echo "::error::Add an npm automation token as the NPM_TOKEN secret, then delete and re-push the tag."
+            exit 1
+          fi
+
+          echo "NPM_TOKEN is present."
+
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Resolve the version from the tag
+        id: version
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+
+          if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            echo "::error::Tag '${tag}' is not a vX.Y.Z release tag."
+            exit 1
+          fi
+
+          declared="$(node -p "require('./package.json').version")"
+
+          if [ "$version" != "$declared" ]; then
+            echo "::error::Tag '${tag}' does not match the version in package.json ('${declared}'). Bump package.json and re-tag."
+            exit 1
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${version}."
+
+      # Runs before npm ci: the script uses only Node built-ins, so an unfinished
+      # changelog fails in seconds rather than after a full install and build.
+      - name: Check the changelog section for this version
+        run: npm run check:changelog -- "${{ steps.version.outputs.version }}"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate
+        run: npm run validate
+
+      - name: Publish to npm with provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public

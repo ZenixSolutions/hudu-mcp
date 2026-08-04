@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      # Contract tests are opt-in and hit a live Hudu instance. HUDU_CONTRACT_TESTS
+      # is deliberately never set here.
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # The published package is a CLI. These two flags are the only entry points
+      # that run without configuration, so they are what proves the build is
+      # actually executable rather than merely type-correct.
+      - name: Install smoke test
+        run: |
+          set -euo pipefail
+
+          expected="$(node -p "require('./package.json').version")"
+          actual="$(node dist/index.js --version)"
+
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::node dist/index.js --version printed '$actual' but package.json says '$expected'."
+            exit 1
+          fi
+
+          if ! node dist/index.js --help | grep -q -- '--list-tools'; then
+            echo "::error::node dist/index.js --help did not print the expected usage text."
+            exit 1
+          fi
+
+          echo "Smoke test passed: dist/index.js reports $actual and prints usage."
+
+  secret-scan:
+    name: Committed credential scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      # Deliberately narrow. This looks for provider-issued credential formats and
+      # for assignments that give a real-looking value to a Hudu API key. It does
+      # not look for the words "password", "secret" or "token" on their own: this
+      # codebase discusses stored passwords and TOTP secrets constantly, in schemas,
+      # descriptions and comments, and a scanner that fires on every one of those is
+      # a scanner people learn to ignore.
+      #
+      # This is a backstop, not a guarantee. A secret in a shape not listed here
+      # will pass.
+      - name: Scan tracked files for credential material
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/credential-patterns.txt <<'PATTERNS'
+          -----BEGIN [A-Z ]*PRIVATE KEY-----
+          (^|[^A-Za-z0-9])(AKIA|ASIA)[0-9A-Z]{16}([^A-Za-z0-9]|$)
+          (^|[^A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{36,}
+          (^|[^A-Za-z0-9])github_pat_[A-Za-z0-9_]{30,}
+          (^|[^A-Za-z0-9])npm_[A-Za-z0-9]{36}([^A-Za-z0-9]|$)
+          (^|[^A-Za-z0-9])xox[abprs]-[A-Za-z0-9]{8,}-[A-Za-z0-9-]{8,}
+          (^|[^A-Za-z0-9])AIza[0-9A-Za-z_-]{35}([^A-Za-z0-9_-]|$)
+          (^|[^A-Za-z0-9])sk_(live|test)_[0-9A-Za-z]{16,}
+          (^|[^A-Za-z0-9])glpat-[A-Za-z0-9_-]{20,}
+          (^|[^A-Za-z0-9])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}
+          HUDU_API_KEY[[:space:]]*[:=][[:space:]]*['"]?[A-Za-z0-9_-]{20,}
+          [Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy]['"]?[[:space:]]*[:=][[:space:]]*['"][A-Za-z0-9_-]{20,}['"]
+          PATTERNS
+
+          status=0
+
+          if git grep -I -n -E -f /tmp/credential-patterns.txt -- . > /tmp/credential-hits.txt; then
+            while IFS= read -r hit; do
+              file="${hit%%:*}"
+              rest="${hit#*:}"
+              line="${rest%%:*}"
+              echo "::error file=${file},line=${line}::This line matches a known credential format. Do not commit secret material; rotate the credential if it was ever real."
+            done < /tmp/credential-hits.txt
+            status=1
+          fi
+
+          # .env.example is the only environment file that may be tracked.
+          env_files="$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '(^|/)\.env\.example$' || true)"
+
+          if [ -n "$env_files" ]; then
+            while IFS= read -r file; do
+              echo "::error file=${file}::Environment files must not be committed. Only .env.example is tracked."
+            done <<< "$env_files"
+            status=1
+          fi
+
+          if [ "$status" -eq 0 ]; then
+            echo "No credential material found in tracked files."
+          fi
+
+          exit "$status"

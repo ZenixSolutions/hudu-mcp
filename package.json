@@ -1,0 +1,73 @@
+{
+  "name": "@zenixsolutions/hudu-mcp",
+  "version": "0.1.0",
+  "description": "Community MCP server for the Hudu IT documentation REST API. Full documented API surface, secret-safe by default.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "hudu",
+    "itdocumentation",
+    "msp",
+    "documentation"
+  ],
+  "homepage": "https://github.com/ZenixSolutions/hudu-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/ZenixSolutions/hudu-mcp/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZenixSolutions/hudu-mcp.git"
+  },
+  "license": "MIT",
+  "author": "Zenix Solutions",
+  "type": "module",
+  "bin": {
+    "hudu-mcp": "dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.map",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:contract": "HUDU_CONTRACT_TESTS=1 vitest run tests/contract",
+    "check:changelog": "node scripts/check-changelog.mjs",
+    "validate": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^22.18.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.39.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^3.2.4"
+  }
+}

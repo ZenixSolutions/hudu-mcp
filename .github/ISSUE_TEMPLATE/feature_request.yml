@@ -1,0 +1,99 @@
+name: Feature request
+description: Propose a new tool, argument, or behaviour.
+title: 'feat: '
+labels: ['enhancement', 'needs-triage']
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two constraints decide most requests here, so it is worth stating them first.
+
+        **Only documented API surface.** If an endpoint, parameter or field is not in
+        `docs/reference/api-docs.json`, it does not get a tool. Behaviour observed on
+        one live instance is evidence about that instance, not about the API.
+
+        **Nothing is invented.** This server does not emit `total` or `has_more`,
+        because no Hudu collection endpoint returns a count. A request that requires
+        fabricating information the API does not provide will be declined with a
+        pointer to the relevant item in `docs/reference/spec-defects.md`.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >-
+        What you are trying to do and why the current tools do not do it. Describe
+        the task, not the solution you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: >-
+        What you would like to exist. If it is a new tool, suggest a name and the
+        arguments it would take.
+    validations:
+      required: true
+
+  - type: input
+    id: endpoint
+    attributes:
+      label: Hudu endpoint
+      description: >-
+        The method and path in `docs/reference/api-docs.json` that backs this, for
+        example `GET /companies/{company_id}/assets`. Leave blank only if the request
+        is not about the Hudu API.
+      placeholder: 'GET /asset_layouts'
+    validations:
+      required: false
+
+  - type: input
+    id: hudu-version
+    attributes:
+      label: Hudu version
+      description: >-
+        From `hudu_get_api_info`. Endpoints and fields differ between versions, so
+        this tells us whether the capability exists on the version this server
+        targets.
+      placeholder: '2.37.1'
+    validations:
+      required: false
+
+  - type: dropdown
+    id: classification
+    attributes:
+      label: Operation class
+      description: >-
+        What would this do to data? Anything beyond Read is gated behind an
+        environment flag and, for destructive operations, a `confirm` argument.
+      options:
+        - Read
+        - Create
+        - Update
+        - Admin
+        - Destructive
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: >-
+        Existing tools or workarounds you attempted, and why they were not enough.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked that this endpoint or field appears in `docs/reference/api-docs.json`, or this request is not about the Hudu API.
+          required: true
+        - label: I checked `docs/reference/spec-defects.md` and this is not already recorded as something the API cannot do.
+          required: true

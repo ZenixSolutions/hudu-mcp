@@ -1,0 +1,120 @@
+name: Bug report
+description: Something in this MCP server behaves differently from what it documents.
+title: 'fix: '
+labels: ['bug', 'needs-triage']
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please check `docs/reference/spec-defects.md`. Many surprising
+        behaviours are deliberate consequences of gaps and contradictions in the Hudu
+        API contract, and are recorded there with a reason.
+
+        **Do not paste API keys, real instance URLs, or unredacted response bodies.**
+        If this is a security issue, close this form and use
+        [Security Advisories](https://github.com/ZenixSolutions/hudu-mcp/security/advisories/new)
+        instead.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: What you observed, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        The tool called and the arguments used, with identifiers and any customer
+        data replaced. Include the exact error text if there was one.
+      placeholder: |
+        1. Call hudu_list_assets with { "company_id": 123, "page_size": 100 }
+        2. ...
+    validations:
+      required: true
+
+  - type: input
+    id: hudu-version
+    attributes:
+      label: Hudu version
+      description: >-
+        Call `hudu_get_api_info` and paste the version it reports. This is required.
+        The Hudu API varies materially between versions — endpoints, fields and even
+        response shapes differ — so a report without a version usually cannot be acted
+        on. If the server will not start, the same value is on your Hudu instance's
+        admin page.
+      placeholder: '2.37.1'
+    validations:
+      required: true
+
+  - type: input
+    id: package-version
+    attributes:
+      label: hudu-mcp version
+      description: Output of `npx @zenixsolutions/hudu-mcp --version`.
+      placeholder: '0.1.0'
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node version
+      description: Output of `node --version`.
+      placeholder: 'v22.11.0'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: capability-flags
+    attributes:
+      label: Capability flags in effect
+      description: >-
+        Which gates are set in the server's environment. Select every one that
+        applies. These change which tools are registered at all, so they change
+        what is reproducible.
+      multiple: true
+      options:
+        - HUDU_READ_ONLY
+        - HUDU_ALLOW_DESTRUCTIVE
+        - HUDU_ALLOW_PASSWORD_REVEAL
+        - HUDU_ALLOW_EXPORTS
+        - None of these are set
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      description: The client and version connecting to this server.
+      placeholder: 'Claude Desktop 1.x'
+    validations:
+      required: false
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: >-
+        Output of `--check` and, if the problem is about a missing or unexpected
+        tool, `--list-tools`. Redact anything identifying before pasting.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have removed API keys, instance URLs and customer data from everything above.
+          required: true
+        - label: I checked `docs/reference/spec-defects.md` and this is not a recorded API limitation.
+          required: true
+        - label: I am using the latest published version, or have stated why I cannot.
+          required: false

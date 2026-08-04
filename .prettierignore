@@ -1,0 +1,13 @@
+dist
+coverage
+node_modules
+docs/reference/api-docs.json
+docs/reference/api-docs.pretty.json
+docs/reference/spec-inventory.json
+docs/reference/body-schemas.txt
+CHANGELOG.md
+
+# Contributor Covenant 2.1, reproduced verbatim. Prettier would rewrite its list
+# markers and reflow its text, which would make it no longer the upstream text.
+CODE_OF_CONDUCT.md
+

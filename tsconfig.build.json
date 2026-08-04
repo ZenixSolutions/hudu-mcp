@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Only the build pins rootDir. The base config is also used by
+    // `tsc --noEmit`, which type-checks tests/ and vitest.config.ts — files that
+    // legitimately live outside src/ and would otherwise trip TS6059.
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["tests", "**/*.test.ts"]
+}

@@ -1,0 +1,21 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/ZenixSolutions/hudu-mcp/security/advisories/new
+    about: >-
+      Report privately through GitHub Security Advisories. Do not open a public
+      issue, and do not include API keys, real instance URLs, response bodies or
+      working exploit steps.
+
+  - name: Questions about Hudu itself
+    url: https://www.hudu.com/
+    about: >-
+      This repository maintains a third-party MCP server. Questions about the
+      Hudu platform, your instance, your API key or its scopes belong with Hudu.
+
+  - name: How to contribute
+    url: https://github.com/ZenixSolutions/hudu-mcp/blob/main/CONTRIBUTING.md
+    about: >-
+      The contribution lifecycle, local setup, layer boundaries and what CI
+      enforces.

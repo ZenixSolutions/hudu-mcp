@@ -1,0 +1,4066 @@
+[
+ {
+  "path": "/activity_logs",
+  "method": "GET",
+  "operationId": "get_activity_logs",
+  "summary": "Retrieve a list of activity logs",
+  "tags": [
+   "Activity Logs"
+  ],
+  "description": "This endpoint allows you to fetch activity logs of users with various filtering options.",
+  "params": [
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "Specify the current page of results to retrieve"
+   },
+   {
+    "name": "user_id",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "Filter logs by a specific user ID"
+   },
+   {
+    "name": "user_email",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter logs by a user's email address"
+   },
+   {
+    "name": "resource_id",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "Filter logs by resource ID; must be used in conjunction with resource_type"
+   },
+   {
+    "name": "resource_type",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter logs by resource type (Asset, AssetPassword, Company, Article, etc.); must be used in conjunction with resource_id"
+   },
+   {
+    "name": "action_message",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter logs by the action performed"
+   },
+   {
+    "name": "start_date",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter logs starting from a specific date; must be in ISO 8601 format"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "Specify the number of results to return per page"
+   }
+  ],
+  "responses": {
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/activity_logs",
+  "method": "DELETE",
+  "operationId": "delete_activity_logs",
+  "summary": "Delete activity logs",
+  "tags": [
+   "Activity Logs"
+  ],
+  "description": "This endpoint allows you to delete activity logs from a specific datetime. If the 'delete_unassigned_logs' parameter is set to true, only logs where user_id is nil will be deleted.",
+  "params": [
+   {
+    "name": "datetime",
+    "in": "query",
+    "required": true,
+    "type": "string",
+    "desc": "Specify the starting datetime from which logs will be deleted; must be in ISO 8601 format"
+   },
+   {
+    "name": "delete_unassigned_logs",
+    "in": "query",
+    "required": false,
+    "type": "boolean",
+    "desc": "If true, only deletes logs where user_id is nil"
+   }
+  ],
+  "responses": {
+   "200": "Successful operation",
+   "400": "Bad Request - Invalid datetime format or missing datetime parameter",
+   "401": "Unauthorized"
+  }
+ },
+ {
+  "path": "/api_info",
+  "method": "GET",
+  "operationId": "get_api_info",
+  "summary": "Retrieve API information",
+  "tags": [
+   "API Info"
+  ],
+  "description": "This endpoint returns the version and date of your Hudu instance in JSON format:\n  \n{\n  \"version\": \"x.x\",\n  \"date\": \"2021-11-03\"\n}",
+  "params": [],
+  "responses": {
+   "200": "object",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/articles",
+  "method": "GET",
+  "operationId": "get_articles",
+  "summary": "Get a list of Knowledge Base Articles",
+  "tags": [
+   "Articles"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by article name"
+   },
+   {
+    "name": "company_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by company_id"
+   },
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Get current page of results"
+   },
+   {
+    "name": "draft",
+    "in": "query",
+    "required": false,
+    "type": "boolean",
+    "desc": "Filter by draft status"
+   },
+   {
+    "name": "enable_sharing",
+    "in": "query",
+    "required": false,
+    "type": "boolean",
+    "desc": "If true, filter by public articles"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Number of results to return"
+   },
+   {
+    "name": "slug",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by URL slug"
+   },
+   {
+    "name": "search",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by search query"
+   },
+   {
+    "name": "updated_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter articles updated within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters articles updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters articles updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters articles updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/articles",
+  "method": "POST",
+  "operationId": "post_articles",
+  "summary": "Create a Knowledge Base Article",
+  "tags": [
+   "Articles"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "article",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "content": {
+       "type": "string",
+       "description": "Article content"
+      },
+      "name": {
+       "type": "string",
+       "description": "Article name"
+      },
+      "enable_sharing": {
+       "type": "boolean",
+       "description": "When true, the article has a public URL for non-authenticated users to view"
+      },
+      "folder_id": {
+       "type": "integer",
+       "description": "Used to associate article with a folder"
+      },
+      "company_id": {
+       "type": "integer",
+       "description": "Used to associate article with a company"
+      }
+     }
+    },
+    "desc": "Article object that needs to be added to the store"
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/Article",
+   "401": "Unauthorized",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/articles/{id}",
+  "method": "GET",
+  "operationId": "get_articles_id",
+  "summary": "Get a Knowledge Base Article",
+  "tags": [
+   "Articles"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested article"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Article",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/articles/{id}",
+  "method": "PUT",
+  "operationId": "put_articles_id",
+  "summary": "Update a Knowledge Base Article",
+  "tags": [
+   "Articles"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   },
+   {
+    "name": "article",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "content": {
+       "type": "string",
+       "description": "Article content"
+      },
+      "name": {
+       "type": "string",
+       "description": "Article name"
+      },
+      "enable_sharing": {
+       "type": "boolean",
+       "description": "When true, the article has a public URL for non-authenticated users to view"
+      },
+      "folder_id": {
+       "type": "integer",
+       "description": "Used to associate article with a folder"
+      },
+      "company_id": {
+       "type": "integer",
+       "description": "Used to associate article with a company"
+      }
+     }
+    },
+    "desc": "Article object that needs to be updated"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Article",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/articles/{id}",
+  "method": "DELETE",
+  "operationId": "delete_articles_id",
+  "summary": "Delete a Knowledge Base Article",
+  "tags": [
+   "Articles"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested article"
+   }
+  ],
+  "responses": {
+   "204": "Article deleted successfully",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/articles/{id}/archive",
+  "method": "PUT",
+  "operationId": "put_articles_id_archive",
+  "summary": "Archive a Knowledge Base Article",
+  "tags": [
+   "Articles"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested article"
+   }
+  ],
+  "responses": {
+   "200": "Article archived successfully",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Archival Failure"
+  }
+ },
+ {
+  "path": "/articles/{id}/unarchive",
+  "method": "PUT",
+  "operationId": "put_articles_id_unarchive",
+  "summary": "Unarchive a Knowledge Base Article",
+  "tags": [
+   "Articles"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested article"
+   }
+  ],
+  "responses": {
+   "200": "Article unarchived successfully",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Archival Failure"
+  }
+ },
+ {
+  "path": "/asset_layouts",
+  "method": "GET",
+  "operationId": "get_asset_layouts",
+  "summary": "Get a list of Asset Layouts",
+  "tags": [
+   "Asset Layouts"
+  ],
+  "description": "Retrieve a list of available Asset Layouts.",
+  "params": [
+   {
+    "name": "name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by the name of the Asset Layout"
+   },
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "Get the current page of results"
+   },
+   {
+    "name": "slug",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by URL slug"
+   },
+   {
+    "name": "updated_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter asset layouts updated within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters asset layouts updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters asset layouts updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters asset layouts updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Asset_Layout",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/asset_layouts",
+  "method": "POST",
+  "operationId": "post_asset_layouts",
+  "summary": "Create an Asset Layout",
+  "tags": [
+   "Asset Layouts"
+  ],
+  "description": "Create a new Asset Layout with the specified properties.",
+  "params": [
+   {
+    "name": "asset_layout",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string",
+       "description": "Name of the Asset Layout"
+      },
+      "icon": {
+       "type": "string",
+       "description": "Icon class name"
+      },
+      "color": {
+       "type": "string",
+       "description": "Hex code for the background color"
+      },
+      "icon_color": {
+       "type": "string",
+       "description": "Hex code for the icon color"
+      },
+      "include_passwords": {
+       "type": "boolean",
+       "description": "If true, include passwords in the Asset Layout"
+      },
+      "include_photos": {
+       "type": "boolean",
+       "description": "If true, include photos in the Asset Layout"
+      },
+      "include_comments": {
+       "type": "boolean",
+       "description": "If true, include comments in the Asset Layout"
+      },
+      "include_files": {
+       "type": "boolean",
+       "description": "If true, include files in the Asset Layout"
+      },
+      "password_types": {
+       "type": "string",
+       "description": "List of password types, separated with new line characters"
+      },
+      "fields": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "field_type": {
+          "type": "string"
+         },
+         "required": {
+          "type": "boolean"
+         },
+         "show_in_list": {
+          "type": "boolean"
+         },
+         "position": {
+          "type": "integer"
+         }
+        }
+       },
+       "description": "An array of fields for the Asset Layout"
+      }
+     },
+     "example": {
+      "asset_layout": {
+       "name": "Asset-Layout-Name-Here",
+       "icon": "icon-emblem-here E.g. --> fas fa-home",
+       "color": "icon-color-here E.g. --> #FFFFF",
+       "icon_color": "icon-background-color-here E.g. --> #FFFFF",
+       "include_passwords": true,
+       "include_photos": true,
+       "include_comments": true,
+       "include_files": true,
+       "fields": [
+        {
+         "label": "Name-of-the-field-here",
+         "field_type": "type-of-field-here E.g. Text, RichText, Number",
+         "required": true,
+         "show_in_list": true,
+         "position": 1
+        },
+        {
+         "label": "Another-field-name-here",
+         "field_type": "Another-type-of-field E.g. Text, RichText, Number",
+         "required": false,
+         "show_in_list": false,
+         "position": 2
+        }
+       ]
+      }
+     }
+    },
+    "desc": "Asset layout object that needs to be added to the store"
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/Asset_Layout",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/asset_layouts/{id}",
+  "method": "GET",
+  "operationId": "get_asset_layouts_id",
+  "summary": "Get an Asset Layout",
+  "tags": [
+   "Asset Layouts"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested Asset Layout"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Asset_Layout",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/asset_layouts/{id}",
+  "method": "PUT",
+  "operationId": "put_asset_layouts_id",
+  "summary": "Update an Asset Layout",
+  "tags": [
+   "Asset Layouts"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the Asset Layout to be updated"
+   },
+   {
+    "name": "asset_layout",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "fields": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "description": "An array of field names for the Asset Layout"
+      },
+      "active": {
+       "type": "boolean",
+       "description": "If true, the Asset Layout is active"
+      },
+      "icon_color": {
+       "type": "string",
+       "description": "Hex code for the icon color"
+      },
+      "color": {
+       "type": "string",
+       "description": "Hex code for the background color"
+      },
+      "icon": {
+       "type": "string",
+       "description": "Icon class name"
+      },
+      "name": {
+       "type": "string",
+       "description": "Name of the Asset Layout"
+      },
+      "include_passwords": {
+       "type": "boolean",
+       "description": "If true, include passwords in the Asset Layout"
+      },
+      "include_photos": {
+       "type": "boolean",
+       "description": "If true, include photos in the Asset Layout"
+      },
+      "include_comments": {
+       "type": "boolean",
+       "description": "If true, include comments in the Asset Layout"
+      },
+      "include_files": {
+       "type": "boolean",
+       "description": "If true, include files in the Asset Layout"
+      },
+      "password_types": {
+       "type": "string",
+       "description": "List of password types, separated with new line characters"
+      }
+     }
+    },
+    "desc": "Asset layout object that needs to be updated in the store"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Asset_Layout",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/asset_passwords",
+  "method": "GET",
+  "operationId": "get_asset_passwords",
+  "summary": "Get a list of Passwords",
+  "tags": [
+   "Asset Passwords"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by name of password"
+   },
+   {
+    "name": "company_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by company_id"
+   },
+   {
+    "name": "archived",
+    "in": "query",
+    "required": false,
+    "type": "boolean",
+    "desc": "Set to true to display only archived assets"
+   },
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Get current page of results"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Number of results to return"
+   },
+   {
+    "name": "slug",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by url slug"
+   },
+   {
+    "name": "search",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by search query"
+   },
+   {
+    "name": "updated_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter asset passwords updated within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters asset passwords updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters asset passwords updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters asset passwords updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized"
+  }
+ },
+ {
+  "path": "/asset_passwords",
+  "method": "POST",
+  "operationId": "post_asset_passwords",
+  "summary": "Create a Password",
+  "tags": [
+   "Asset Passwords"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "body",
+    "in": "body",
+    "required": false,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "asset_password": {
+       "type": "object",
+       "properties": {
+        "password": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        },
+        "company_id": {
+         "type": "integer",
+         "format": "int64"
+        },
+        "passwordable_type": {
+         "type": "string"
+        },
+        "passwordable_id": {
+         "type": "integer",
+         "format": "int64"
+        },
+        "in_portal": {
+         "type": "boolean"
+        },
+        "otp_secret": {
+         "type": "string"
+        },
+        "url": {
+         "type": "string"
+        },
+        "username": {
+         "type": "string"
+        },
+        "description": {
+         "type": "string"
+        },
+        "password_type": {
+         "type": "string"
+        },
+        "password_folder_id": {
+         "type": "integer",
+         "format": "int64"
+        }
+       }
+      }
+     }
+    },
+    "desc": "Asset Password data"
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/Asset_Password",
+   "401": "Unauthorized",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/asset_passwords/{id}",
+  "method": "GET",
+  "operationId": "get_asset_passwords_id",
+  "summary": "Get a Password",
+  "tags": [
+   "Asset Passwords"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested Password"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Asset_Password",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/asset_passwords/{id}",
+  "method": "PUT",
+  "operationId": "put_asset_passwords_id",
+  "summary": "Update a Password",
+  "tags": [
+   "Asset Passwords"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested Password"
+   },
+   {
+    "name": "body",
+    "in": "body",
+    "required": false,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "asset_password": {
+       "type": "object",
+       "properties": {
+        "password": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        },
+        "company_id": {
+         "type": "integer",
+         "format": "int64"
+        },
+        "passwordable_type": {
+         "type": "string"
+        },
+        "passwordable_id": {
+         "type": "integer",
+         "format": "int64"
+        },
+        "in_portal": {
+         "type": "boolean"
+        },
+        "otp_secret": {
+         "type": "string"
+        },
+        "url": {
+         "type": "string"
+        },
+        "username": {
+         "type": "string"
+        },
+        "description": {
+         "type": "string"
+        },
+        "password_type": {
+         "type": "string"
+        },
+        "password_folder_id": {
+         "type": "integer",
+         "format": "int64"
+        }
+       }
+      }
+     }
+    },
+    "desc": "Asset Password data"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Asset_Password",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/asset_passwords/{id}",
+  "method": "DELETE",
+  "operationId": "delete_asset_passwords_id",
+  "summary": "Delete a Password",
+  "tags": [
+   "Asset Passwords"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested Password"
+   }
+  ],
+  "responses": {
+   "204": "No Content",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/asset_passwords/{id}/archive",
+  "method": "PUT",
+  "operationId": "put_asset_passwords_id_archive",
+  "summary": "Archive a Password",
+  "tags": [
+   "Asset Passwords"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested Password"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Asset_Password",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Archival Failure"
+  }
+ },
+ {
+  "path": "/asset_passwords/{id}/unarchive",
+  "method": "PUT",
+  "operationId": "put_asset_passwords_id_unarchive",
+  "summary": "Unarchive a Password",
+  "tags": [
+   "Asset Passwords"
+  ],
+  "description": "",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "id of the requested Password"
+   }
+  ],
+  "responses": {
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Archival Failure"
+  }
+ },
+ {
+  "path": "/assets",
+  "method": "GET",
+  "operationId": "get_assets",
+  "summary": "Retrieve a list of assets",
+  "tags": [
+   "Assets"
+  ],
+  "description": "Retrieve a list of assets based on the provided filters and pagination settings",
+  "params": [
+   {
+    "name": "company_id",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "Filter assets by the parent company's ID"
+   },
+   {
+    "name": "id",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "Filter assets by their ID"
+   },
+   {
+    "name": "name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter assets by their name"
+   },
+   {
+    "name": "primary_serial",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter assets by their primary serial number"
+   },
+   {
+    "name": "asset_layout_id",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "Filter assets by their associated asset layout's ID"
+   },
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "Specify the page number of results to return"
+   },
+   {
+    "name": "archived",
+    "in": "query",
+    "required": false,
+    "type": "boolean",
+    "desc": "Set to true to display only archived assets"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "Limit the number of assets returned per page"
+   },
+   {
+    "name": "slug",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter assets by their URL slug"
+   },
+   {
+    "name": "search",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter assets using a search query"
+   },
+   {
+    "name": "updated_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter assets updated within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters assets updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters assets updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters assets updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   }
+  ],
+  "responses": {
+   "200": "object",
+   "401": "Unauthorized access, authentication required",
+   "404": "The specified resource(s) could not be found"
+  }
+ },
+ {
+  "path": "/cards/jump",
+  "method": "GET",
+  "operationId": "get_cards_jump",
+  "summary": "Jump to an asset with integration details without API key authentication, only requiring authentication at the time of jump.",
+  "tags": [
+   "Cards"
+  ],
+  "description": "The `/cards/jump` endpoint provides an easy way to create links from external integrations to Hudu. Below are examples of how to jump from a Syncro contact and a Watchman Monitoring computer to the corresponding asset in Hudu:\n- Syncro example:\n  ```\n  https://[MY_URL_HERE]/api/v1/cards/jump?integration_id=XXXX&integration_slug=syncro&integration_type=contact\n  ```\n\n- Watchman Monitoring example (using identifier instead of ID):\n  ```\n  https://[MY_URL_HERE]/api/v1/cards/jump?integration_identifier=XXXX&integration_slug=watchman&integration_type=computer\n  ```\n",
+  "params": [
+   {
+    "name": "integration_type",
+    "in": "query",
+    "required": true,
+    "type": "string",
+    "desc": "Type of card. Contact support@usehudu.com for a list of types for specific integrations."
+   },
+   {
+    "name": "integration_slug",
+    "in": "query",
+    "required": true,
+    "type": "string",
+    "desc": "Identifier of the external integration."
+   },
+   {
+    "name": "integration_id",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "ID of the entity in the external integration."
+   },
+   {
+    "name": "integration_identifier",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Identifier of the entity in the external integration (if integration_id is not set)."
+   }
+  ],
+  "responses": {
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/cards/lookup",
+  "method": "GET",
+  "operationId": "get_cards_lookup",
+  "summary": "Lookup cards with external integration details",
+  "tags": [
+   "Cards"
+  ],
+  "description": "Searches for cards associated with the specified external integration details. Returns a 200 status code if successful.",
+  "params": [
+   {
+    "name": "integration_slug",
+    "in": "query",
+    "required": true,
+    "type": "string",
+    "desc": "Identifier of the external integration"
+   },
+   {
+    "name": "integration_id",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "ID in the external integration. Must be present unless integration_identifier is set\n"
+   },
+   {
+    "name": "integration_identifier",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Identifier in the external integration (used if integration_id is not set)"
+   }
+  ],
+  "responses": {
+   "200": "object",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/companies",
+  "method": "GET",
+  "operationId": "get_companies",
+  "summary": "Retrieve a list of companies",
+  "tags": [
+   "Companies"
+  ],
+  "description": "Retrieve a list of companies with optional filtering and pagination parameters.",
+  "params": [
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "Retrieve the specified page of results"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "Specify the number of results to return per page"
+   },
+   {
+    "name": "name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter companies by name"
+   },
+   {
+    "name": "phone_number",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter companies by phone number"
+   },
+   {
+    "name": "website",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter companies by website"
+   },
+   {
+    "name": "city",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter companies by city"
+   },
+   {
+    "name": "id_number",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter companies by id_number"
+   },
+   {
+    "name": "state",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter companies by state"
+   },
+   {
+    "name": "slug",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter companies by URL slug"
+   },
+   {
+    "name": "search",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter companies by a search query"
+   },
+   {
+    "name": "id_in_integration",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter companies by id/identifier in PSA/RMM/outside integration"
+   },
+   {
+    "name": "updated_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter companies updated within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters companies updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters companies updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters companies updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/companies",
+  "method": "POST",
+  "operationId": "post_companies",
+  "summary": "Create a new company",
+  "tags": [
+   "Companies"
+  ],
+  "description": "Create a new company with the provided information.",
+  "params": [
+   {
+    "name": "body",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string",
+       "description": "The name of the company"
+      },
+      "nickname": {
+       "type": "string",
+       "description": "The nickname of the company"
+      },
+      "company_type": {
+       "type": "string",
+       "description": "The type of the company"
+      },
+      "address_line_1": {
+       "type": "string",
+       "description": "The first line of the company's address"
+      },
+      "address_line_2": {
+       "type": "string",
+       "description": "The second line of the company's address"
+      },
+      "city": {
+       "type": "string",
+       "description": "The city where the company is located"
+      },
+      "state": {
+       "type": "string",
+       "description": "The state where the company is located"
+      },
+      "zip": {
+       "type": "string",
+       "description": "The zip code of the company's location"
+      },
+      "country_name": {
+       "type": "string",
+       "description": "The country where the company is located"
+      },
+      "phone_number": {
+       "type": "string",
+       "description": "The company's phone number"
+      },
+      "fax_number": {
+       "type": "string",
+       "description": "The company's fax number"
+      },
+      "website": {
+       "type": "string",
+       "description": "The company's website"
+      },
+      "id_number": {
+       "type": "string",
+       "description": "The company's ID number"
+      },
+      "parent_company_id": {
+       "type": "number",
+       "description": "The parent company's ID, if applicable"
+      },
+      "notes": {
+       "type": "string",
+       "description": "Additional notes about the company"
+      }
+     }
+    }
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/Company",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/companies/jump",
+  "method": "GET",
+  "operationId": "get_companies_jump",
+  "summary": "Jump to a company with integration details",
+  "tags": [
+   "Companies"
+  ],
+  "description": "Jump to a company that contains integration details, bypassing the need for API key authentication. Authentication is only required at the time of the jump. This is a convenient way to create links from external integrations to Hudu.\n",
+  "params": [
+   {
+    "name": "integration_slug",
+    "in": "query",
+    "required": true,
+    "type": "string",
+    "desc": "Identifier of the external integration"
+   },
+   {
+    "name": "integration_id",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "ID of the company in the external integration"
+   },
+   {
+    "name": "integration_identifier",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Identifier of the company in the external integration (used if integration_id is not set)"
+   }
+  ],
+  "responses": {
+   "200": "Jump successful",
+   "401": "Unauthorized",
+   "404": "Company not found"
+  }
+ },
+ {
+  "path": "/companies/{company_id}/assets",
+  "method": "GET",
+  "operationId": "get_companies_company_id_assets",
+  "summary": "Get a list of Assets specific to a Company",
+  "tags": [
+   "Assets"
+  ],
+  "description": "Retrieve a list of assets specific to a particular company.",
+  "params": [
+   {
+    "name": "company_id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The identifier of the requested parent Company"
+   },
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "The current page of results to retrieve"
+   },
+   {
+    "name": "archived",
+    "in": "query",
+    "required": false,
+    "type": "boolean",
+    "desc": "Set to true to only show archived results"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "number",
+    "desc": "The number of results to return per page"
+   }
+  ],
+  "responses": {
+   "200": "object",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/companies/{company_id}/assets",
+  "method": "POST",
+  "operationId": "post_companies_company_id_assets",
+  "summary": "Create an Asset",
+  "tags": [
+   "Assets"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "company_id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The identifier of the parent company for the new asset"
+   },
+   {
+    "name": "asset",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string",
+       "description": "The name of the new asset"
+      },
+      "asset_layout_id": {
+       "type": "number",
+       "description": "The identifier of the asset layout associated with the new asset"
+      },
+      "primary_serial": {
+       "type": "string",
+       "description": "The primary serial number of the new asset"
+      },
+      "primary_mail": {
+       "type": "string",
+       "description": "The primary email associated with the new asset"
+      },
+      "primary_model": {
+       "type": "string",
+       "description": "The primary model of the new asset"
+      },
+      "primary_manufacturer": {
+       "type": "string",
+       "description": "The primary manufacturer of the new asset"
+      },
+      "custom_fields": {
+       "asset": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "string"
+         }
+        },
+        "description": "An array of JSON objects with the label underscored and downcased. The label must correspond with an existing asset layout field's label."
+       }
+      }
+     }
+    },
+    "desc": "The asset to create"
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/Asset"
+  }
+ },
+ {
+  "path": "/companies/{company_id}/assets/{id}",
+  "method": "GET",
+  "operationId": "get_companies_company_id_assets_id",
+  "summary": "Get an Asset",
+  "tags": [
+   "Assets"
+  ],
+  "description": "Retrieve a specific asset by its identifier.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The identifier of the requested Asset"
+   },
+   {
+    "name": "company_id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The identifier of the requested parent Company"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Asset",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/companies/{company_id}/assets/{id}",
+  "method": "PUT",
+  "operationId": "put_companies_company_id_assets_id",
+  "summary": "Update an Asset",
+  "tags": [
+   "Assets"
+  ],
+  "description": "Update the specified asset with new information. Asset data should be sent in the body of the request in JSON format. NOTE: to update fields you must use the 'custom_fields' key. Then specify the label and value as a key pair. The label must in snake case (lowercase with underscores instead of spaces) For example: <pre>{\"asset\":{\"name\": \"new name\", \"asset_layout_id\": 3, \"primary_serial\": \"new serial\", \"custom_fields\": [{\"brand\": \"Apple\", \"model\": \"MacBook Pro\"}]}}</pre>",
+  "params": [
+   {
+    "name": "asset",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "$ref": "#/definitions/Asset"
+    },
+    "desc": "The updated asset data in JSON format"
+   },
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The identifier of the requested Asset"
+   },
+   {
+    "name": "company_id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The identifier of the requested parent Company"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Asset",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/companies/{company_id}/assets/{id}",
+  "method": "DELETE",
+  "operationId": "delete_companies_company_id_assets_id",
+  "summary": "Delete an Asset",
+  "tags": [
+   "Assets"
+  ],
+  "description": "Deletes the specified Asset. Returns a 204 status code if successful.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The identifier of the requested Asset"
+   },
+   {
+    "name": "company_id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The identifier of the requested parent Company"
+   }
+  ],
+  "responses": {
+   "204": "Asset deleted successfully",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/companies/{company_id}/assets/{id}/archive",
+  "method": "PUT",
+  "operationId": "put_companies_company_id_assets_id_archive",
+  "summary": "Archive an Asset",
+  "tags": [
+   "Assets"
+  ],
+  "description": "Archives the specified Asset. Returns a 200 status code if successful.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The identifier of the requested Asset"
+   },
+   {
+    "name": "company_id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The identifier of the requested parent Company"
+   }
+  ],
+  "responses": {
+   "200": "Asset archived successfully",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Archival Failure"
+  }
+ },
+ {
+  "path": "/companies/{company_id}/assets/{id}/unarchive",
+  "method": "PUT",
+  "operationId": "put_companies_company_id_assets_id_unarchive",
+  "summary": "Unarchive an Asset",
+  "tags": [
+   "Assets"
+  ],
+  "description": "Unarchives the specified Asset. Returns a 200 status code if successful.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The identifier of the requested Asset"
+   },
+   {
+    "name": "company_id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The identifier of the requested parent Company"
+   }
+  ],
+  "responses": {
+   "200": "Asset unarchived successfully",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unarchival Failure"
+  }
+ },
+ {
+  "path": "/companies/{id}",
+  "method": "GET",
+  "operationId": "get_companies_id",
+  "summary": "Retrieve a specific company",
+  "tags": [
+   "Companies"
+  ],
+  "description": "Fetch the details of a company by its ID.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "ID of the requested company"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Company",
+   "401": "Unauthorized",
+   "404": "Company not found"
+  }
+ },
+ {
+  "path": "/companies/{id}",
+  "method": "PUT",
+  "operationId": "put_companies_id",
+  "summary": "Update a specific company",
+  "tags": [
+   "Companies"
+  ],
+  "description": "Update the details of a company by its ID.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "ID of the company to update"
+   },
+   {
+    "name": "body",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string",
+       "description": "The name of the company"
+      },
+      "nickname": {
+       "type": "string",
+       "description": "The nickname of the company"
+      },
+      "company_type": {
+       "type": "string",
+       "description": "The type of the company"
+      },
+      "address_line_1": {
+       "type": "string",
+       "description": "The first line of the company's address"
+      },
+      "address_line_2": {
+       "type": "string",
+       "description": "The second line of the company's address"
+      },
+      "city": {
+       "type": "string",
+       "description": "The city where the company is located"
+      },
+      "state": {
+       "type": "string",
+       "description": "The state where the company is located"
+      },
+      "zip": {
+       "type": "string",
+       "description": "The zip code of the company's location"
+      },
+      "country_name": {
+       "type": "string",
+       "description": "The country where the company is located"
+      },
+      "phone_number": {
+       "type": "string",
+       "description": "The company's phone number"
+      },
+      "fax_number": {
+       "type": "string",
+       "description": "The company's fax number"
+      },
+      "website": {
+       "type": "string",
+       "description": "The company's website"
+      },
+      "id_number": {
+       "type": "string",
+       "description": "The company's ID number"
+      },
+      "parent_company_id": {
+       "type": "number",
+       "description": "The parent company's ID, if applicable"
+      },
+      "notes": {
+       "type": "string",
+       "description": "Additional notes about the company"
+      }
+     }
+    }
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Company",
+   "401": "Unauthorized",
+   "404": "Company not found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/companies/{id}",
+  "method": "DELETE",
+  "operationId": "delete_companies_id",
+  "summary": "Delete a specific company",
+  "tags": [
+   "Companies"
+  ],
+  "description": "Delete a company by its ID. Returns a 204 if successful.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "ID of the company to delete"
+   }
+  ],
+  "responses": {
+   "204": "Company deleted successfully",
+   "401": "Unauthorized",
+   "404": "Company not found"
+  }
+ },
+ {
+  "path": "/companies/{id}/archive",
+  "method": "PUT",
+  "operationId": "put_companies_id_archive",
+  "summary": "Archive a specific company",
+  "tags": [
+   "Companies"
+  ],
+  "description": "Mark a company as archived by its ID. Archived companies are hidden from the regular list of companies but can be retrieved if necessary.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "ID of the company to archive"
+   }
+  ],
+  "responses": {
+   "200": "Company archived successfully",
+   "401": "Unauthorized",
+   "404": "Company not found",
+   "422": "Archival failure"
+  }
+ },
+ {
+  "path": "/companies/{id}/unarchive",
+  "method": "PUT",
+  "operationId": "put_companies_id_unarchive",
+  "summary": "Unarchive a specific company",
+  "tags": [
+   "Companies"
+  ],
+  "description": "Mark a previously archived company as unarchived by its ID. Unarchived companies are visible in the regular list of companies.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "ID of the company to unarchive"
+   }
+  ],
+  "responses": {
+   "200": "Company unarchived successfully",
+   "401": "Unauthorized",
+   "404": "Company not found",
+   "422": "Unarchival failure"
+  }
+ },
+ {
+  "path": "/expirations",
+  "method": "GET",
+  "operationId": "get_expirations",
+  "summary": "Retrieve expirations for the account",
+  "tags": [
+   "Expirations"
+  ],
+  "description": "Retrieve a list of expirations for the account, with optional filtering and pagination.",
+  "params": [
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The current page of results to retrieve"
+   },
+   {
+    "name": "company_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter expirations by company ID"
+   },
+   {
+    "name": "expiration_type",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter expirations by expiration type (undeclared, domain, ssl_certificate, warranty, asset_field, article_expiration)\n"
+   },
+   {
+    "name": "resource_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter logs by resource ID; must be coupled with resource_type"
+   },
+   {
+    "name": "resource_type",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter logs by resource type (Asset, AssetPassword, Company, Article, etc.); must be coupled with resource_id\n"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The number of results to return per page"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/exports",
+  "method": "POST",
+  "operationId": "post_exports",
+  "summary": "Initiate an export of a company",
+  "tags": [
+   "Exports"
+  ],
+  "description": "Initiate an export of a company with specified settings and filters.",
+  "params": [
+   {
+    "name": "export",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "include_websites": {
+       "type": "boolean",
+       "description": "True or False to indicate if websites should be included in the export"
+      },
+      "include_passwords": {
+       "type": "boolean",
+       "description": "True or False to indicate if passwords should be included in the export"
+      },
+      "company_id": {
+       "type": "integer",
+       "format": "int64",
+       "description": "Specify the company to export"
+      },
+      "format": {
+       "type": "string",
+       "enum": [
+        "pdf",
+        "csv",
+        "s3"
+       ],
+       "description": "Specify the export format: pdf, csv, or s3"
+      },
+      "asset_layout_ids": {
+       "type": "array",
+       "items": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "description": "Array of asset layout IDs to include in the export"
+      }
+     }
+    }
+   }
+  ],
+  "responses": {
+   "200": "Export initiated successfully",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/folders",
+  "method": "GET",
+  "operationId": "get_folders",
+  "summary": "Retrieve a list of folders",
+  "tags": [
+   "Folders"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter folders by name"
+   },
+   {
+    "name": "company_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter folders by company ID"
+   },
+   {
+    "name": "in_company",
+    "in": "query",
+    "required": false,
+    "type": "boolean",
+    "desc": "When true, only returns company-specific KB articles"
+   },
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The current page of results to retrieve"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The number of results to return per page"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/folders",
+  "method": "POST",
+  "operationId": "post_folders",
+  "summary": "Create a folder",
+  "tags": [
+   "Folders"
+  ],
+  "description": "Create a new folder with the provided information.",
+  "params": [
+   {
+    "name": "folder",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string",
+       "description": "Name of the folder"
+      },
+      "icon": {
+       "type": "string",
+       "description": "Icon for the folder"
+      },
+      "description": {
+       "type": "string",
+       "description": "Description of the folder"
+      },
+      "parent_folder_id": {
+       "type": "integer",
+       "format": "int64",
+       "description": "ID of the parent folder (optional)"
+      },
+      "company_id": {
+       "type": "integer",
+       "format": "int64",
+       "description": "ID of the associated company (optional)"
+      }
+     }
+    }
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/Folder",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/folders/{id}",
+  "method": "GET",
+  "operationId": "get_folders_id",
+  "summary": "Retrieve a folder by ID",
+  "tags": [
+   "Folders"
+  ],
+  "description": "Retrieve a folder by its ID.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested folder"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Folder",
+   "401": "Unauthorized",
+   "404": "Folder not found"
+  }
+ },
+ {
+  "path": "/folders/{id}",
+  "method": "PUT",
+  "operationId": "put_folders_id",
+  "summary": "Update a folder",
+  "tags": [
+   "Folders"
+  ],
+  "description": "Update an existing folder with the provided information.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the folder to update"
+   },
+   {
+    "name": "folder",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string",
+       "description": "Name of the folder"
+      },
+      "icon": {
+       "type": "string",
+       "description": "Icon for the folder"
+      },
+      "description": {
+       "type": "string",
+       "description": "Description of the folder"
+      },
+      "parent_folder_id": {
+       "type": "integer",
+       "format": "int64",
+       "description": "ID of the parent folder (optional)"
+      },
+      "company_id": {
+       "type": "integer",
+       "format": "int64",
+       "description": "ID of the associated company (optional)"
+      }
+     }
+    }
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Folder",
+   "401": "Unauthorized",
+   "404": "Folder not found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/folders/{id}",
+  "method": "DELETE",
+  "operationId": "delete_folders_id",
+  "summary": "Delete a folder",
+  "tags": [
+   "Folders"
+  ],
+  "description": "Delete a folder by its ID.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the folder to delete"
+   }
+  ],
+  "responses": {
+   "204": "Folder deleted successfully",
+   "401": "Unauthorized",
+   "404": "Folder not found"
+  }
+ },
+ {
+  "path": "/ip_addresses",
+  "method": "GET",
+  "operationId": "getIpAddresses",
+  "summary": "Get a list of IP addresses",
+  "tags": [
+   "IP Addresses"
+  ],
+  "description": "Retrieve a list of all IP addresses, with optional filtering.",
+  "params": [
+   {
+    "name": "network_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by network ID"
+   },
+   {
+    "name": "address",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by IP address"
+   },
+   {
+    "name": "status",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by IP address status"
+   },
+   {
+    "name": "fqdn",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by FQDN"
+   },
+   {
+    "name": "asset_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by asset ID"
+   },
+   {
+    "name": "company_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by company ID"
+   },
+   {
+    "name": "created_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter IP addresses created within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters companies updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters companies updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters companies updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   },
+   {
+    "name": "updated_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter IP addresses updated within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters companies updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters companies updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters companies updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized"
+  }
+ },
+ {
+  "path": "/ip_addresses",
+  "method": "POST",
+  "operationId": "createIpAddress",
+  "summary": "Create a new IP address",
+  "tags": [
+   "IP Addresses"
+  ],
+  "description": "Add a new IP address to the system.",
+  "params": [
+   {
+    "name": "ip_address",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "$ref": "#/definitions/IpAddress"
+    },
+    "desc": "IP Address object that needs to be added"
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/IpAddress",
+   "401": "Unauthorized",
+   "422": "Validation Error"
+  }
+ },
+ {
+  "path": "/ip_addresses/{id}",
+  "method": "GET",
+  "operationId": "getIpAddressById",
+  "summary": "Get a single IP address",
+  "tags": [
+   "IP Addresses"
+  ],
+  "description": "Retrieve details of a specific IP address by ID.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "IP Address ID"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/IpAddress",
+   "401": "Unauthorized",
+   "404": "IP address not found"
+  }
+ },
+ {
+  "path": "/ip_addresses/{id}",
+  "method": "PUT",
+  "operationId": "updateIpAddress",
+  "summary": "Update an existing IP address",
+  "tags": [
+   "IP Addresses"
+  ],
+  "description": "Modify details of an existing IP address.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "IP Address ID"
+   },
+   {
+    "name": "ip_address",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "$ref": "#/definitions/IpAddress"
+    },
+    "desc": "IP Address object with updated data"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/IpAddress",
+   "401": "Unauthorized",
+   "404": "IP address not found",
+   "422": "Validation Error"
+  }
+ },
+ {
+  "path": "/ip_addresses/{id}",
+  "method": "DELETE",
+  "operationId": "deleteIpAddress",
+  "summary": "Delete an IP address",
+  "tags": [
+   "IP Addresses"
+  ],
+  "description": "Remove an IP address from the system.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "IP Address ID"
+   }
+  ],
+  "responses": {
+   "204": "IP address deleted",
+   "401": "Unauthorized",
+   "404": "IP address not found"
+  }
+ },
+ {
+  "path": "/magic_dash",
+  "method": "GET",
+  "operationId": "get_magic_dash",
+  "summary": "Retrieve a list of Magic Dash Items",
+  "tags": [
+   "Magic Dash"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "title",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by title"
+   },
+   {
+    "name": "company_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by company ID"
+   },
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Retrieve the current page of results"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Set the number of results to return per page"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/magic_dash",
+  "method": "POST",
+  "operationId": "post_magic_dash",
+  "summary": "Create or update a Magic Dash Item",
+  "tags": [
+   "Magic Dash"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "magic_dash_item",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "message": {
+       "type": "string",
+       "description": "The primary content to be displayed on the Magic Dash Item"
+      },
+      "company_name": {
+       "type": "string",
+       "description": "The company name attribute used to match an existing company"
+      },
+      "title": {
+       "type": "string",
+       "description": "The title attribute, used for matching existing Magic Dash Items with the same title and company_name"
+      },
+      "icon": {
+       "type": "string",
+       "description": "A FontAwesome icon for the header of the Magic Dash Item (e.g., fas fa-circle)"
+      },
+      "image_url": {
+       "type": "string",
+       "description": "A URL for an image to be used in the header of the Magic Dash Item"
+      },
+      "content_link": {
+       "type": "string",
+       "description": "A link to an external website associated with the Magic Dash Item's content"
+      },
+      "content": {
+       "type": "string",
+       "description": "HTML content (tables, images, videos, etc.) to be displayed in the Magic Dash Item"
+      },
+      "shade": {
+       "type": "string",
+       "description": "An optional color for the Magic Dash Item to represent different contextual states (e.g., success, danger)"
+      }
+     }
+    }
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/MagicDash",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/magic_dash",
+  "method": "DELETE",
+  "operationId": "delete_magic_dash",
+  "summary": "Delete a Magic Dash Item without an ID",
+  "tags": [
+   "Magic Dash"
+  ],
+  "description": "  <p>You can delete a Magic Dash item by sending the same parameters you do to create a magic dash item, but with a DELETE REST request.</p>\n  <pre>\n  {\n    \"title\": \"Microsoft 365\",\n    \"company_name\": \"AcmeCorp\"\n  }\n  </pre>\n",
+  "params": [
+   {
+    "name": "title",
+    "in": "formData",
+    "required": true,
+    "type": "string",
+    "desc": "The title attribute of the Magic Dash Item to be deleted"
+   },
+   {
+    "name": "company_name",
+    "in": "formData",
+    "required": true,
+    "type": "string",
+    "desc": "The company name attribute of the Magic Dash Item to be deleted"
+   }
+  ],
+  "responses": {
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/magic_dash/{id}",
+  "method": "DELETE",
+  "operationId": "deleteMagicDashItemById",
+  "summary": "Delete a Magic Dash item with the specified ID",
+  "tags": [
+   "Magic Dash"
+  ],
+  "description": "This endpoint allows you to delete a Magic Dash item by providing its unique ID.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "number",
+    "desc": "The unique ID of the Magic Dash item to be deleted"
+   }
+  ],
+  "responses": {
+   "401": "Unauthorized",
+   "404": "Magic Dash item not found",
+   "422": "Unable to process the request"
+  }
+ },
+ {
+  "path": "/matchers",
+  "method": "GET",
+  "operationId": "getMatchers",
+  "summary": "List matchers for an integration",
+  "tags": [
+   "Matchers"
+  ],
+  "description": "Retrieve a list of matchers for a specific integration based on provided filters.",
+  "params": [
+   {
+    "name": "integration_id",
+    "in": "query",
+    "required": true,
+    "type": "integer",
+    "desc": "The ID of the integration, which can be found in the URL when editing an integration."
+   },
+   {
+    "name": "matched",
+    "in": "query",
+    "required": false,
+    "type": "boolean",
+    "desc": "Filter by whether the company has already been matched."
+   },
+   {
+    "name": "sync_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by the ID of the record in the integration (used if the integration's ID is an integer)."
+   },
+   {
+    "name": "identifier",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by the identifier in the integration (used if the integration's ID is a string)."
+   },
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The current page of results."
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The number of results to return per page."
+   },
+   {
+    "name": "company_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by company ID."
+   }
+  ],
+  "responses": {
+   "200": "object",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/matchers/{id}",
+  "method": "PUT",
+  "operationId": "updateMatcherById",
+  "summary": "Update a Matcher",
+  "tags": [
+   "Matchers"
+  ],
+  "description": "Update the specified Matcher's attributes.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "The ID of the Matcher to update."
+   },
+   {
+    "name": "matcher",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "company_id": {
+       "type": "integer",
+       "description": "The updated company ID."
+      },
+      "potential_company_id": {
+       "type": "integer",
+       "description": "The updated potential company ID."
+      },
+      "sync_id": {
+       "type": "string",
+       "description": "The updated sync ID."
+      },
+      "identifier": {
+       "type": "string",
+       "description": "The updated identifier."
+      }
+     }
+    },
+    "desc": "Matcher update attributes"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Matcher",
+   "401": "Unauthorized",
+   "404": "Matcher not found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/matchers/{id}",
+  "method": "DELETE",
+  "operationId": "deleteMatcherById",
+  "summary": "Delete a Matcher",
+  "tags": [
+   "Matchers"
+  ],
+  "description": "Delete the specified Matcher by its ID. Returns a 204 if successful.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "The ID of the Matcher to delete."
+   }
+  ],
+  "responses": {
+   "204": "Matcher successfully deleted",
+   "401": "Unauthorized",
+   "404": "Matcher not found"
+  }
+ },
+ {
+  "path": "/networks",
+  "method": "GET",
+  "operationId": "getNetworks",
+  "summary": "Get a list of networks",
+  "tags": [
+   "Networks"
+  ],
+  "description": "Retrieve a list of all networks, with optional filtering.",
+  "params": [
+   {
+    "name": "company_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by company ID"
+   },
+   {
+    "name": "slug",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by network slug"
+   },
+   {
+    "name": "name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by network name"
+   },
+   {
+    "name": "network_type",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by network type"
+   },
+   {
+    "name": "address",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by network address"
+   },
+   {
+    "name": "location_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by location ID"
+   },
+   {
+    "name": "created_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter networks created within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters companies updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters companies updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters companies updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   },
+   {
+    "name": "updated_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter networks updated within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters companies updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters companies updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters companies updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized"
+  }
+ },
+ {
+  "path": "/networks",
+  "method": "POST",
+  "operationId": "createNetwork",
+  "summary": "Create a new network",
+  "tags": [
+   "Networks"
+  ],
+  "description": "Add a new network to the system.",
+  "params": [
+   {
+    "name": "network",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "$ref": "#/definitions/Network"
+    },
+    "desc": "Network object that needs to be added"
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/Network",
+   "401": "Unauthorized",
+   "422": "Validation Error"
+  }
+ },
+ {
+  "path": "/networks/{id}",
+  "method": "GET",
+  "operationId": "getNetworkById",
+  "summary": "Get a single network",
+  "tags": [
+   "Networks"
+  ],
+  "description": "Retrieve details of a specific network by ID.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "Network ID"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Network",
+   "401": "Unauthorized",
+   "404": "Network not found"
+  }
+ },
+ {
+  "path": "/networks/{id}",
+  "method": "PUT",
+  "operationId": "updateNetwork",
+  "summary": "Update an existing network",
+  "tags": [
+   "Networks"
+  ],
+  "description": "Modify details of an existing network.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "Network ID"
+   },
+   {
+    "name": "network",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "$ref": "#/definitions/Network"
+    },
+    "desc": "Network object with updated data"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Network",
+   "401": "Unauthorized",
+   "404": "Network not found",
+   "422": "Validation Error"
+  }
+ },
+ {
+  "path": "/networks/{id}",
+  "method": "DELETE",
+  "operationId": "deleteNetwork",
+  "summary": "Delete a network",
+  "tags": [
+   "Networks"
+  ],
+  "description": "Remove a network from the system.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "Network ID"
+   }
+  ],
+  "responses": {
+   "200": "object",
+   "401": "Unauthorized",
+   "404": "Network not found"
+  }
+ },
+ {
+  "path": "/password_folders",
+  "method": "GET",
+  "operationId": "get_password_folders",
+  "summary": "Retrieve a list of password folders",
+  "tags": [
+   "Password Folders"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter folders by name"
+   },
+   {
+    "name": "company_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter folders by company ID"
+   },
+   {
+    "name": "search",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by search query"
+   },
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The current page of results to retrieve"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The number of results to return per page"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/password_folders/{id}",
+  "method": "GET",
+  "operationId": "get_password_folders_id",
+  "summary": "Retrieve a password folder by ID",
+  "tags": [
+   "Password Folders"
+  ],
+  "description": "Retrieve a password folder by its ID.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested password folder"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Password_Folder",
+   "401": "Unauthorized",
+   "404": "Password Folder not found"
+  }
+ },
+ {
+  "path": "/procedures",
+  "method": "GET",
+  "operationId": "getProcedures",
+  "summary": "Get a list of Procedures (Processes)",
+  "tags": [
+   "Procedures"
+  ],
+  "description": "Retrieve a list of procedures filtered by the provided parameters.",
+  "params": [
+   {
+    "name": "name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by the name of the procedure."
+   },
+   {
+    "name": "company_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by the associated company ID."
+   },
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The current page of results."
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The number of results to return per page."
+   },
+   {
+    "name": "slug",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by the URL slug of the procedure."
+   }
+  ],
+  "responses": {
+   "200": "object",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/procedures/{id}",
+  "method": "GET",
+  "operationId": "getProcedureById",
+  "summary": "Get a Procedure (Process)",
+  "tags": [
+   "Procedures"
+  ],
+  "description": "Retrieve a procedure by its ID.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "The ID of the requested procedure."
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Procedure",
+   "401": "Unauthorized",
+   "404": "Procedure not found"
+  }
+ },
+ {
+  "path": "/procedures/{id}/kickoff",
+  "method": "POST",
+  "operationId": "kickoffProcedureById",
+  "summary": "Kickoff a Procedure (Process)",
+  "tags": [
+   "Procedures"
+  ],
+  "description": "Start a process from a company process. Optionally, attach the process to an asset by providing an asset ID, or change the process name by passing a new name.\n",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "The ID of the requested procedure."
+   },
+   {
+    "name": "asset_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The ID of the asset to attach the process to (optional)."
+   },
+   {
+    "name": "name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "The new name for the procedure (optional)."
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Procedure",
+   "401": "Unauthorized",
+   "404": "Procedure not found"
+  }
+ },
+ {
+  "path": "/public_photos",
+  "method": "GET",
+  "operationId": "getPublicPhotos",
+  "summary": "Get a list of public photos",
+  "tags": [
+   "Public Photos"
+  ],
+  "description": "Retrieve a list of public photos with pagination options.",
+  "params": [
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The current page of results."
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The number of results to return per page."
+   }
+  ],
+  "responses": {
+   "200": "object",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/public_photos",
+  "method": "POST",
+  "operationId": "createPublicPhoto",
+  "summary": "Create a public photo",
+  "tags": [
+   "Public Photos"
+  ],
+  "description": "Upload a public photo and associate it with a specific record type and ID. This will not upload the photo to the photos module or sidebar of the associated record (Upcoming Feature). This endpoint exists to add photos to articles and asset notes.",
+  "params": [
+   {
+    "name": "photo",
+    "in": "formData",
+    "required": true,
+    "type": "file",
+    "desc": "The photo file to be uploaded (must be an image)."
+   },
+   {
+    "name": "record_type",
+    "in": "formData",
+    "required": true,
+    "type": "string",
+    "desc": "The type of record the photo will be associated with (e.g., Article)."
+   },
+   {
+    "name": "record_id",
+    "in": "formData",
+    "required": true,
+    "type": "integer",
+    "desc": "The ID of the record the photo will be associated with."
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/PublicPhoto",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/public_photos/{id}",
+  "method": "PUT",
+  "operationId": "updatePublicPhoto",
+  "summary": "Update a public photo",
+  "tags": [
+   "Public Photos"
+  ],
+  "description": "Update the associated record type and ID for a specific public photo.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "The ID of the public photo to update."
+   },
+   {
+    "name": "record_type",
+    "in": "formData",
+    "required": true,
+    "type": "string",
+    "desc": "The updated type of record the photo is associated with (e.g., Article)."
+   },
+   {
+    "name": "record_id",
+    "in": "formData",
+    "required": true,
+    "type": "integer",
+    "desc": "The updated ID of the record the photo is associated with."
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/PublicPhoto",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/rack_storage_items",
+  "method": "GET",
+  "operationId": "get_rack_storage_items",
+  "summary": "Get a list of Rack Storage Items",
+  "tags": [
+   "Rack Storage Items"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "rack_storage_role_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by Rack Storage Role ID"
+   },
+   {
+    "name": "asset_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by Asset ID"
+   },
+   {
+    "name": "start_unit",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by Start Unit"
+   },
+   {
+    "name": "end_unit",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by End Unit"
+   },
+   {
+    "name": "status",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by Status"
+   },
+   {
+    "name": "side",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by Side. Front or Rear"
+   },
+   {
+    "name": "created_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter rack storage items created within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters companies updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters companies updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters companies updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   },
+   {
+    "name": "updated_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter rack storage items updated within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters companies updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters companies updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters companies updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/rack_storage_items",
+  "method": "POST",
+  "operationId": "post_rack_storage_items",
+  "summary": "Create a Rack Storage Item",
+  "tags": [
+   "Rack Storage Items"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "rack_storage_item",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "$ref": "#/definitions/RackStorageItem"
+    },
+    "desc": "Rack Storage Item object that needs to be added to the store"
+   }
+  ],
+  "responses": {
+   "201": "Rack Storage Item created successfully",
+   "401": "Unauthorized",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/rack_storage_items/{id}",
+  "method": "GET",
+  "operationId": "get_rack_storage_items_id",
+  "summary": "Get a Rack Storage Item",
+  "tags": [
+   "Rack Storage Items"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested Rack Storage Item"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/RackStorageItem",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/rack_storage_items/{id}",
+  "method": "PUT",
+  "operationId": "put_rack_storage_items_id",
+  "summary": "Update a Rack Storage Item",
+  "tags": [
+   "Rack Storage Items"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the Rack Storage Item that needs to be updated"
+   },
+   {
+    "name": "rack_storage_item",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "$ref": "#/definitions/RackStorageItem"
+     }
+    },
+    "desc": "Rack Storage Item object that needs to be updated"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/RackStorageItem",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/rack_storage_items/{id}",
+  "method": "DELETE",
+  "operationId": "delete_rack_storage_items_id",
+  "summary": "Delete a Rack Storage Item",
+  "tags": [
+   "Rack Storage Items"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the Rack Storage Item that needs to be deleted"
+   }
+  ],
+  "responses": {
+   "204": "Rack Storage Item deleted successfully",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/rack_storages",
+  "method": "GET",
+  "operationId": "get_rack_storages",
+  "summary": "Get a list of Rack Storages",
+  "tags": [
+   "Rack Storages"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "company_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by company id"
+   },
+   {
+    "name": "location_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by location id"
+   },
+   {
+    "name": "height",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by rack height"
+   },
+   {
+    "name": "min_width",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by minimum rack width"
+   },
+   {
+    "name": "max_width",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter by maximum rack width"
+   },
+   {
+    "name": "created_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter rack storages created within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters companies updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters companies updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters companies updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   },
+   {
+    "name": "updated_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter rack storages updated within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters companies updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters companies updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters companies updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/rack_storages",
+  "method": "POST",
+  "operationId": "post_rack_storages",
+  "summary": "Create a new Rack Storage",
+  "tags": [
+   "Rack Storages"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "rack_storage",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "$ref": "#/definitions/RackStorage"
+    },
+    "desc": "Rack Storage object that needs to be added to the store"
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/RackStorage",
+   "401": "Unauthorized",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/rack_storages/{id}",
+  "method": "GET",
+  "operationId": "get_rack_storages_id",
+  "summary": "Get a Rack Storage",
+  "tags": [
+   "Rack Storages"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested rack storage"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/RackStorage",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/rack_storages/{id}",
+  "method": "PUT",
+  "operationId": "put_rack_storages_id",
+  "summary": "Update a Rack Storage",
+  "tags": [
+   "Rack Storages"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer"
+   },
+   {
+    "name": "rack_storage",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "$ref": "#/definitions/RackStorage"
+    },
+    "desc": "Rack Storage object that needs to be updated"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/RackStorage",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/rack_storages/{id}",
+  "method": "DELETE",
+  "operationId": "delete_rack_storages_id",
+  "summary": "Delete a Rack Storage",
+  "tags": [
+   "Rack Storages"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested rack storage"
+   }
+  ],
+  "responses": {
+   "204": "Rack Storage deleted successfully",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/relations",
+  "method": "GET",
+  "operationId": "get_relations",
+  "summary": "Get a list of all relations",
+  "tags": [
+   "Relations"
+  ],
+  "description": "Retrieve a list of relations with filtering options.",
+  "params": [
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Get the current page of results"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Number of results to return per page"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/relations",
+  "method": "POST",
+  "operationId": "post_relations",
+  "summary": "Create a Relation",
+  "tags": [
+   "Relations"
+  ],
+  "description": "Create a new relation between two entities.",
+  "params": [
+   {
+    "name": "relation",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "toable_id": {
+       "type": "integer",
+       "description": "The ID of the destination entity in the relation"
+      },
+      "toable_type": {
+       "type": "string",
+       "description": "The type of the destination entity in the relation (Asset, Website, Procedure, AssetPassword, Company, Article)"
+      },
+      "fromable_id": {
+       "type": "integer",
+       "description": "The ID of the origin entity in the relation"
+      },
+      "fromable_type": {
+       "type": "string",
+       "description": "The type of the origin entity in the relation (Asset, Website, Procedure, AssetPassword, Company, Article)"
+      },
+      "description": {
+       "type": "string",
+       "description": "Provide a description for the relation to explain the relationship between the two entities"
+      },
+      "is_inverse": {
+       "type": "boolean",
+       "description": "When a relation is created, it will also create another relation that is the inverse. When this is true, this relation is the inverse."
+      }
+     }
+    },
+    "desc": "Relation to create"
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/Relation",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/relations/{id}",
+  "method": "DELETE",
+  "operationId": "delete_relations_id",
+  "summary": "Delete a Relation",
+  "tags": [
+   "Relations"
+  ],
+  "description": "Remove a relation between two entities by its ID.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the Relation to be deleted"
+   }
+  ],
+  "responses": {
+   "204": "Relation deleted successfully",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/s3_exports",
+  "method": "POST",
+  "operationId": "post_s3_exports",
+  "summary": "Initiate a s3 export.",
+  "tags": [
+   "S3 Exports"
+  ],
+  "description": "Initiate a s3 export. You must configure your S3-compatible credentials in the account settings page before using this endpoint.",
+  "params": [],
+  "responses": {
+   "200": "Export initiated successfully",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/uploads",
+  "method": "GET",
+  "operationId": "get_uploads",
+  "summary": "Get a list of all uploads",
+  "tags": [
+   "Uploads"
+  ],
+  "description": null,
+  "params": [],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized"
+  }
+ },
+ {
+  "path": "/uploads",
+  "method": "POST",
+  "operationId": "post_uploads",
+  "summary": "Upload a file",
+  "tags": [
+   "Uploads"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "file",
+    "in": "formData",
+    "required": true,
+    "type": "file",
+    "desc": "The file to upload"
+   },
+   {
+    "name": "upload[uploadable_id]",
+    "in": "formData",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the record to be attached to."
+   },
+   {
+    "name": "upload[uploadable_type]",
+    "in": "formData",
+    "required": true,
+    "type": "string",
+    "desc": "Type of record to be attached to. (Asset, Website, Procedure, AssetPassword, Company, Article)"
+   }
+  ],
+  "responses": {
+   "201": "#/definitions/Upload",
+   "400": "Bad Request",
+   "401": "Unauthorized",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/uploads/{id}",
+  "method": "GET",
+  "operationId": "get_uploads_id",
+  "summary": "Get a specific upload",
+  "tags": [
+   "Uploads"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested upload"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Upload",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/uploads/{id}",
+  "method": "DELETE",
+  "operationId": "delete_uploads_id",
+  "summary": "Delete an upload",
+  "tags": [
+   "Uploads"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested upload"
+   }
+  ],
+  "responses": {
+   "204": "Successfully deleted",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/users",
+  "method": "GET",
+  "operationId": "get_users",
+  "summary": "Retrieve a list of users",
+  "tags": [
+   "Users"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "first_name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter users by first name"
+   },
+   {
+    "name": "last_name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter users by last name"
+   },
+   {
+    "name": "search",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Search across first name and last name"
+   },
+   {
+    "name": "portal_member_company_id",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Filter users by company ID. Only portal members have a company ID."
+   },
+   {
+    "name": "archived",
+    "in": "query",
+    "required": false,
+    "type": "boolean",
+    "desc": "Filter by archived status"
+   },
+   {
+    "name": "email",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter users by email address"
+   },
+   {
+    "name": "security_level",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter users by security level. Security levels are 'super_admin', 'admin', 'spectator', 'editor', 'author', 'portal_member', and 'portal_admin'"
+   },
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The current page of results to retrieve"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "The number of results to return per page"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/users/{id}",
+  "method": "GET",
+  "operationId": "get_user_by_id",
+  "summary": "Retrieve a user by ID",
+  "tags": [
+   "Users"
+  ],
+  "description": "Retrieve a user by its ID.",
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested user"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/User",
+   "401": "Unauthorized",
+   "404": "User not found"
+  }
+ },
+ {
+  "path": "/websites",
+  "method": "GET",
+  "operationId": "get_websites",
+  "summary": "Get a list of all websites",
+  "tags": [
+   "Websites"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "page",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Get current page of results"
+   },
+   {
+    "name": "name",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter websites by name"
+   },
+   {
+    "name": "page_size",
+    "in": "query",
+    "required": false,
+    "type": "integer",
+    "desc": "Number of results to return per page"
+   },
+   {
+    "name": "slug",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by URL slug"
+   },
+   {
+    "name": "search",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter by search query"
+   },
+   {
+    "name": "updated_at",
+    "in": "query",
+    "required": false,
+    "type": "string",
+    "desc": "Filter websites updated within a range or at an exact time. Format: 'start_datetime,end_datetime' for range, 'exact_datetime' for exact match. Both 'start_datetime' and 'end_datetime' should be in ISO 8601 format. If 'start_datetime' is provided and 'end_datetime' is blank, it filters websites updated from 'start_datetime' until now. Example: '2023-06-07T12:34:56Z,' If 'end_datetime' is provided and 'start_datetime' is blank, it filters websites updated from the past until 'end_datetime'. Example: ',2023-06-07T12:34:56Z' If both 'start_datetime' and 'end_datetime' are provided, it filters websites updated within that range. Example: '2023-06-01T12:34:56Z,2023-06-07T12:34:56Z'"
+   }
+  ],
+  "responses": {
+   "200": "array",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/websites",
+  "method": "POST",
+  "operationId": "post_websites",
+  "summary": "Create a Website",
+  "tags": [
+   "Websites"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "website",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "company_id": {
+       "type": "integer",
+       "description": "Used to associate website with company"
+      },
+      "name": {
+       "type": "string",
+       "description": "The name or URL of the website"
+      },
+      "notes": {
+       "type": "string",
+       "description": "Add additional notes to a website"
+      },
+      "paused": {
+       "type": "boolean",
+       "description": "When true, website monitoring is paused"
+      },
+      "disable_dns": {
+       "type": "boolean",
+       "description": "When true, DNS monitoring is paused"
+      },
+      "disable_ssl": {
+       "type": "boolean",
+       "description": "When true, SSL certificate monitoring is paused"
+      },
+      "disable_whois": {
+       "type": "boolean",
+       "description": "When true, WHOIS monitoring is paused"
+      }
+     }
+    }
+   }
+  ],
+  "responses": {
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/websites/{id}",
+  "method": "GET",
+  "operationId": "get_websites_id",
+  "summary": "Get a Website",
+  "tags": [
+   "Websites"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested website"
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Website",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ },
+ {
+  "path": "/websites/{id}",
+  "method": "PUT",
+  "operationId": "put_websites_id",
+  "summary": "Update a Website",
+  "tags": [
+   "Websites"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested website"
+   },
+   {
+    "name": "website",
+    "in": "body",
+    "required": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "company_id": {
+       "type": "integer",
+       "description": "Used to associate website with company"
+      },
+      "name": {
+       "type": "string",
+       "description": "The name or URL of the website"
+      },
+      "notes": {
+       "type": "string",
+       "description": "Add additional notes to a website"
+      },
+      "paused": {
+       "type": "boolean",
+       "description": "When true, website monitoring is paused"
+      },
+      "disable_dns": {
+       "type": "boolean",
+       "description": "When true, DNS monitoring is paused"
+      },
+      "disable_ssl": {
+       "type": "boolean",
+       "description": "When true, SSL certificate monitoring is paused"
+      },
+      "disable_whois": {
+       "type": "boolean",
+       "description": "When true, WHOIS monitoring is paused"
+      }
+     }
+    }
+   }
+  ],
+  "responses": {
+   "200": "#/definitions/Website",
+   "401": "Unauthorized",
+   "404": "Not Found",
+   "422": "Unable to process request"
+  }
+ },
+ {
+  "path": "/websites/{id}",
+  "method": "DELETE",
+  "operationId": "delete_websites_id",
+  "summary": "Delete a Website",
+  "tags": [
+   "Websites"
+  ],
+  "description": null,
+  "params": [
+   {
+    "name": "id",
+    "in": "path",
+    "required": true,
+    "type": "integer",
+    "desc": "ID of the requested website"
+   }
+  ],
+  "responses": {
+   "204": "Successfully deleted",
+   "401": "Unauthorized",
+   "404": "Not Found"
+  }
+ }
+]

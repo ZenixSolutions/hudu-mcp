@@ -1,0 +1,210 @@
+
+### POST /articles   (body param: article, required=True)
+  content: string  # Article content
+  name: string  # Article name
+  enable_sharing: boolean  # When true, the article has a public URL for non-authenticated users to view
+  folder_id: integer  # Used to associate article with a folder
+  company_id: integer  # Used to associate article with a company
+
+### PUT /articles/{id}   (body param: article, required=True)
+  content: string  # Article content
+  name: string  # Article name
+  enable_sharing: boolean  # When true, the article has a public URL for non-authenticated users to view
+  folder_id: integer  # Used to associate article with a folder
+  company_id: integer  # Used to associate article with a company
+
+### POST /asset_layouts   (body param: asset_layout, required=True)
+  name: string  # Name of the Asset Layout
+  icon: string  # Icon class name
+  color: string  # Hex code for the background color
+  icon_color: string  # Hex code for the icon color
+  include_passwords: boolean  # If true, include passwords in the Asset Layout
+  include_photos: boolean  # If true, include photos in the Asset Layout
+  include_comments: boolean  # If true, include comments in the Asset Layout
+  include_files: boolean  # If true, include files in the Asset Layout
+  password_types: string  # List of password types, separated with new line characters
+  fields: array  # An array of fields for the Asset Layout
+    [array of]
+      label: string
+      field_type: string
+      required: boolean
+      show_in_list: boolean
+      position: integer
+
+### PUT /asset_layouts/{id}   (body param: asset_layout, required=True)
+  fields: array  # An array of field names for the Asset Layout
+    [array of]
+  active: boolean  # If true, the Asset Layout is active
+  icon_color: string  # Hex code for the icon color
+  color: string  # Hex code for the background color
+  icon: string  # Icon class name
+  name: string  # Name of the Asset Layout
+  include_passwords: boolean  # If true, include passwords in the Asset Layout
+  include_photos: boolean  # If true, include photos in the Asset Layout
+  include_comments: boolean  # If true, include comments in the Asset Layout
+  include_files: boolean  # If true, include files in the Asset Layout
+  password_types: string  # List of password types, separated with new line characters
+
+### POST /asset_passwords   (body param: body, required=None)
+  asset_password: object
+    password: string
+    name: string
+    company_id: integer
+    passwordable_type: string
+    passwordable_id: integer
+    in_portal: boolean
+    otp_secret: string
+    url: string
+    username: string
+    description: string
+    password_type: string
+    password_folder_id: integer
+
+### PUT /asset_passwords/{id}   (body param: body, required=None)
+  asset_password: object
+    password: string
+    name: string
+    company_id: integer
+    passwordable_type: string
+    passwordable_id: integer
+    in_portal: boolean
+    otp_secret: string
+    url: string
+    username: string
+    description: string
+    password_type: string
+    password_folder_id: integer
+
+### POST /companies   (body param: body, required=True)
+  name: string  # The name of the company
+  nickname: string  # The nickname of the company
+  company_type: string  # The type of the company
+  address_line_1: string  # The first line of the company's address
+  address_line_2: string  # The second line of the company's address
+  city: string  # The city where the company is located
+  state: string  # The state where the company is located
+  zip: string  # The zip code of the company's location
+  country_name: string  # The country where the company is located
+  phone_number: string  # The company's phone number
+  fax_number: string  # The company's fax number
+  website: string  # The company's website
+  id_number: string  # The company's ID number
+  parent_company_id: number  # The parent company's ID, if applicable
+  notes: string  # Additional notes about the company
+
+### POST /companies/{company_id}/assets   (body param: asset, required=True)
+  name: string  # The name of the new asset
+  asset_layout_id: number  # The identifier of the asset layout associated with the new asset
+  primary_serial: string  # The primary serial number of the new asset
+  primary_mail: string  # The primary email associated with the new asset
+  primary_model: string  # The primary model of the new asset
+  primary_manufacturer: string  # The primary manufacturer of the new asset
+  custom_fields: None
+
+### PUT /companies/{company_id}/assets/{id}   (body param: asset, required=True)
+  $ref #/definitions/Asset
+
+### PUT /companies/{id}   (body param: body, required=True)
+  name: string  # The name of the company
+  nickname: string  # The nickname of the company
+  company_type: string  # The type of the company
+  address_line_1: string  # The first line of the company's address
+  address_line_2: string  # The second line of the company's address
+  city: string  # The city where the company is located
+  state: string  # The state where the company is located
+  zip: string  # The zip code of the company's location
+  country_name: string  # The country where the company is located
+  phone_number: string  # The company's phone number
+  fax_number: string  # The company's fax number
+  website: string  # The company's website
+  id_number: string  # The company's ID number
+  parent_company_id: number  # The parent company's ID, if applicable
+  notes: string  # Additional notes about the company
+
+### POST /exports   (body param: export, required=True)
+  include_websites: boolean  # True or False to indicate if websites should be included in the export
+  include_passwords: boolean  # True or False to indicate if passwords should be included in the export
+  company_id: integer  # Specify the company to export
+  format: string  # Specify the export format: pdf, csv, or s3
+  asset_layout_ids: array  # Array of asset layout IDs to include in the export
+    [array of]
+
+### POST /folders   (body param: folder, required=True)
+  name: string  # Name of the folder
+  icon: string  # Icon for the folder
+  description: string  # Description of the folder
+  parent_folder_id: integer  # ID of the parent folder (optional)
+  company_id: integer  # ID of the associated company (optional)
+
+### PUT /folders/{id}   (body param: folder, required=True)
+  name: string  # Name of the folder
+  icon: string  # Icon for the folder
+  description: string  # Description of the folder
+  parent_folder_id: integer  # ID of the parent folder (optional)
+  company_id: integer  # ID of the associated company (optional)
+
+### POST /ip_addresses   (body param: ip_address, required=True)
+  $ref #/definitions/IpAddress
+
+### PUT /ip_addresses/{id}   (body param: ip_address, required=True)
+  $ref #/definitions/IpAddress
+
+### POST /magic_dash   (body param: magic_dash_item, required=True)
+  message: string  # The primary content to be displayed on the Magic Dash Item
+  company_name: string  # The company name attribute used to match an existing company
+  title: string  # The title attribute, used for matching existing Magic Dash Items with the same title and c
+  icon: string  # A FontAwesome icon for the header of the Magic Dash Item (e.g., fas fa-circle)
+  image_url: string  # A URL for an image to be used in the header of the Magic Dash Item
+  content_link: string  # A link to an external website associated with the Magic Dash Item's content
+  content: string  # HTML content (tables, images, videos, etc.) to be displayed in the Magic Dash Item
+  shade: string  # An optional color for the Magic Dash Item to represent different contextual states (e.g., 
+
+### PUT /matchers/{id}   (body param: matcher, required=True)
+  company_id: integer  # The updated company ID.
+  potential_company_id: integer  # The updated potential company ID.
+  sync_id: string  # The updated sync ID.
+  identifier: string  # The updated identifier.
+
+### POST /networks   (body param: network, required=True)
+  $ref #/definitions/Network
+
+### PUT /networks/{id}   (body param: network, required=True)
+  $ref #/definitions/Network
+
+### POST /rack_storage_items   (body param: rack_storage_item, required=True)
+  $ref #/definitions/RackStorageItem
+
+### PUT /rack_storage_items/{id}   (body param: rack_storage_item, required=True)
+  $ref: ?
+
+### POST /rack_storages   (body param: rack_storage, required=True)
+  $ref #/definitions/RackStorage
+
+### PUT /rack_storages/{id}   (body param: rack_storage, required=True)
+  $ref #/definitions/RackStorage
+
+### POST /relations   (body param: relation, required=True)
+  toable_id: integer  # The ID of the destination entity in the relation
+  toable_type: string  # The type of the destination entity in the relation (Asset, Website, Procedure, AssetPasswo
+  fromable_id: integer  # The ID of the origin entity in the relation
+  fromable_type: string  # The type of the origin entity in the relation (Asset, Website, Procedure, AssetPassword, C
+  description: string  # Provide a description for the relation to explain the relationship between the two entitie
+  is_inverse: boolean  # When a relation is created, it will also create another relation that is the inverse. When
+
+### POST /websites   (body param: website, required=True)
+  company_id: integer  # Used to associate website with company
+  name: string  # The name or URL of the website
+  notes: string  # Add additional notes to a website
+  paused: boolean  # When true, website monitoring is paused
+  disable_dns: boolean  # When true, DNS monitoring is paused
+  disable_ssl: boolean  # When true, SSL certificate monitoring is paused
+  disable_whois: boolean  # When true, WHOIS monitoring is paused
+
+### PUT /websites/{id}   (body param: website, required=True)
+  company_id: integer  # Used to associate website with company
+  name: string  # The name or URL of the website
+  notes: string  # Add additional notes to a website
+  paused: boolean  # When true, website monitoring is paused
+  disable_dns: boolean  # When true, DNS monitoring is paused
+  disable_ssl: boolean  # When true, SSL certificate monitoring is paused
+  disable_whois: boolean  # When true, WHOIS monitoring is paused
