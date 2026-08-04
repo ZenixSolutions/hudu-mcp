@@ -227,11 +227,17 @@ const LIST_ENDPOINTS: readonly ListEndpoint[] = [
   // key names from it.
   {
     path: '/asset_passwords',
+    listKey: 'asset_passwords',
     paginated: true,
     probePageSize: 1,
     declaredIn: 'src/tools/passwords.ts',
   },
-  { path: '/password_folders', paginated: true, declaredIn: 'src/tools/passwords.ts' },
+  {
+    path: '/password_folders',
+    listKey: 'password_folders',
+    paginated: true,
+    declaredIn: 'src/tools/passwords.ts',
+  },
   { path: '/articles', listKey: 'articles', paginated: true, declaredIn: 'src/tools/content.ts' },
   { path: '/folders', listKey: 'folders', paginated: true, declaredIn: 'src/tools/content.ts' },
   {
