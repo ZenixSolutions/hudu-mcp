@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { z } from 'zod';
 
 import { allToolDefinitions } from '../../src/tools/index.js';
 
@@ -18,7 +19,9 @@ const definitions = allToolDefinitions();
 function proseOf(definition: (typeof definitions)[number]): { where: string; text: string }[] {
   const parts = [{ where: definition.name, text: definition.description }];
   for (const [argument, schema] of Object.entries(definition.inputSchema)) {
-    const { description } = schema;
+    // See the note in observed-behaviour.test.ts: zod 4 narrows ZodRawShape's
+    // value type to `$ZodType`, which does not declare `description`.
+    const { description } = schema as z.ZodType;
     if (description !== undefined) {
       parts.push({ where: `${definition.name}.${argument}`, text: description });
     }

@@ -113,7 +113,8 @@ const assetIdArg = {
  * the prose is the only usable source and it is reproduced faithfully here.
  */
 const customFieldsArg = z
-  .array(z.record(z.string()))
+  // zod 4 requires both a key and a value type; zod 3 inferred the key.
+  .array(z.record(z.string(), z.string()))
   .optional()
   .describe(
     'Values for the custom fields the asset layout defines, as an array holding one object ' +

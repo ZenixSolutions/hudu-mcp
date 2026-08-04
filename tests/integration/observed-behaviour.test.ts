@@ -14,6 +14,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { z } from 'zod';
 
 import { unwrapList, unwrapRecord } from '../../src/api/envelope.js';
 import { errorFromResponse } from '../../src/api/errors.js';
@@ -271,9 +272,24 @@ describe('F6: hudu_list_matchers explains the 500 that a missing integration_id 
 /* -------------------------------------------------------------------------- */
 
 /** Parse one argument against a registered tool's schema. */
-const accepts = (tool: string, args: Record<string, unknown>): boolean =>
-  testServer().tool(tool).inputSchema[Object.keys(args)[0]!]?.safeParse(args[Object.keys(args)[0]!])
-    .success === true;
+const accepts = (tool: string, args: Record<string, unknown>): boolean => {
+  // zod 4 types a ZodRawShape value as the internal `$ZodType`, which does not
+  // expose `safeParse`. The runtime object is a full ZodType; the cast is the
+  // narrowest way to say so without loosening the schema's own types.
+  const key = Object.keys(args)[0]!;
+  const schema = testServer().tool(tool).inputSchema[key] as z.ZodType | undefined;
+  return schema?.safeParse(args[key]).success === true;
+};
+
+/**
+ * Read an argument's `.describe()` text off a registered tool.
+ *
+ * zod 4 narrows a `ZodRawShape` value to the internal `$ZodType`, which does not
+ * declare `description`. The runtime object is a full `ZodType` and does carry
+ * it, so the cast states what is true rather than widening anything.
+ */
+const argDescription = (tool: string, argument: string): string =>
+  String((testServer().tool(tool).inputSchema[argument] as z.ZodType | undefined)?.description);
 
 describe('F7: schemas do not reject values the API demonstrably uses', () => {
   it.each(['Assigned', 'DHCP', 'Reserved', 'Unassigned'])(
@@ -294,9 +310,7 @@ describe('F7: schemas do not reject values the API demonstrably uses', () => {
   );
 
   it('the ip status description names both the documented and the observed values', () => {
-    const description = String(
-      testServer().tool('hudu_update_ip_address').inputSchema['status']?.description,
-    );
+    const description = argDescription('hudu_update_ip_address', 'status');
 
     expect(description).toContain('slaac');
     expect(description).toContain('DHCP');
@@ -314,9 +328,7 @@ describe('F7: schemas do not reject values the API demonstrably uses', () => {
   );
 
   it('the relation type description names IpAddress as observed', () => {
-    const description = String(
-      testServer().tool('hudu_create_relation').inputSchema['fromable_type']?.description,
-    );
+    const description = argDescription('hudu_create_relation', 'fromable_type');
 
     expect(description).toContain('IpAddress');
     expect(description).toMatch(/2\.34\.2/);
@@ -354,9 +366,7 @@ describe('F7: schemas do not reject values the API demonstrably uses', () => {
   });
 
   it('describes network_type with the only value observed on the instance', () => {
-    const description = String(
-      testServer().tool('hudu_create_network').inputSchema['network_type']?.description,
-    );
+    const description = argDescription('hudu_create_network', 'network_type');
 
     expect(description).toMatch(/observed/i);
     expect(description).toMatch(/2\.34\.2/);

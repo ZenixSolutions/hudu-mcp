@@ -26,7 +26,6 @@ const boolFromEnv = (raw: string | undefined): boolean =>
 
 const ConfigSchema = z.object({
   baseUrl: z
-    .string()
     .url('HUDU_BASE_URL must be an absolute URL, for example https://hudu.example.com')
     .refine((value) => value.startsWith('https://') || value.startsWith('http://'), {
       message: 'HUDU_BASE_URL must use http or https',
