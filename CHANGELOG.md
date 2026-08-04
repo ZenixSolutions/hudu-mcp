@@ -12,15 +12,19 @@ remove tools.
 
 ### Fixed
 
-- **Six list tools returned nothing (correctness).** A contract run against a
-  live Hudu 2.34.2 instance found that `GET /companies`, `/asset_layouts`,
+- **Six list endpoints wrap their array (robustness).** A contract run against
+  a live Hudu 2.34.2 instance found that `GET /companies`, `/asset_layouts`,
   `/articles`, `/folders`, `/relations` and `/users` wrap their array in a
   single-key envelope, which the captured API document records for none of them.
-  Those tools expected a bare array. `unwrapList` does not throw on a wrong
-  shape — it returns an empty array — so `hudu_list_companies` reported a
-  populated tenant as having no companies. Each envelope key is now declared,
-  and `unwrapList` no longer short-circuits to an empty list when a declared key
-  is missing from the body. Recorded as `docs/reference/spec-defects.md` F1.
+  Those tools declared no `listKey`. They still worked: `unwrapList` falls back
+  to the sole array-valued property of an object body, and each of the six
+  responses was measured and carries exactly one. Each key is now declared
+  anyway, because the fallback holds only while that stays true — one added
+  sibling array makes the shape genuinely ambiguous and the call fails.
+  `unwrapList` also no longer short-circuits to an empty list when a declared
+  key is missing from the body. Recorded as `docs/reference/spec-defects.md` F1,
+  which also records that an earlier draft of this entry claimed these tools
+  returned nothing. They did not, and the claim was made without measuring.
 - **Six get tools returned the envelope instead of the record.**
   `/companies/{id}`, `/asset_layouts/{id}`, `/articles/{id}`, `/folders/{id}`,
   `/procedures/{id}` and `/users/{id}` wrap the record under its singular name,

@@ -317,11 +317,27 @@ document is still document-derived. `/expirations`, `/uploads`, `/websites`,
 | `/public_photos`                 | `public_photos` | correct        |
 | `/matchers`                      | `matchers`      | correct        |
 
-Six shipped list tools expected a bare array. `unwrapList` does not throw on a
-wrong shape — by design, because a hard failure there reaches the model as an
-unexplainable error — so those tools returned an **empty list**, which an agent
-reads as "this Hudu instance has no companies". That is the worst failure mode
-this server has: silent, plausible and wrong.
+Six shipped list tools expected a bare array and declared no `listKey`.
+
+**Correction, recorded rather than quietly amended.** This document and the
+0.1.0 changelog first stated that those six tools therefore returned an empty
+list. That was wrong, and it was asserted without being measured. `unwrapList`
+already had a fallback for an undeclared key: when the body is an object with
+exactly one array-valued property, it returns that array. Every one of the six
+responses was checked against the live instance and each carries exactly one
+array property and nothing else, so the fallback resolved all six correctly.
+**The six list tools worked.**
+
+What the missing declarations actually cost is fragility rather than breakage.
+The fallback holds only while the envelope has a single array property; the day
+Hudu adds a second one — a `meta`, a sibling collection — the ambiguity is
+genuine, `unwrapList` refuses to guess, and the call fails. Declaring the key
+removes the dependence on that coincidence. It is a real fix and it was not
+fixing an outage.
+
+The distinction matters beyond bookkeeping: "silently returned nothing" and
+"worked by luck" call for different urgency, and the first claim would have sent
+anyone reading this changelog looking for a failure that never happened.
 
 Each envelope is now declared as a `listKey` on the owning `ResourceSpec`.
 `unwrapList` was also corrected so that a declared key which is _absent_ from
