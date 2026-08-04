@@ -41,10 +41,16 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
+      # Pinned to a major, not @latest. Trusted publishing needs 11.5.1+ and the
+      # npm bundled with Node 22 is 10.x, so an upgrade is unavoidable — but
+      # @latest silently moved this job to npm 12, whose `npm pack --json`
+      # returns an object where 10 and 11 returned an array. That broke the
+      # packaging test in the release job and nowhere else. A release workflow
+      # should not be the first place a new npm major gets exercised.
       - name: Upgrade npm to a version that supports trusted publishing
         run: |
           set -euo pipefail
-          npm install -g npm@latest
+          npm install -g 'npm@^11.5.1'
           npm --version
 
       - name: Resolve the version from the tag

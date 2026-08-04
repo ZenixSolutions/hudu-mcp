@@ -19,7 +19,39 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 interface PackResult {
-  readonly files: readonly { readonly path: string }[];
+  readonly files?: readonly { readonly path: string }[];
+}
+
+/**
+ * Read the file list out of `npm pack --json`, whichever shape npm emits.
+ *
+ * npm 10 and 11 return an array of package objects; npm 12 returns an object
+ * keyed by package name. This test used to index `[0]`, which under npm 12
+ * silently yields no files — and "no files" reads as "the tarball is empty",
+ * which is a failure this test is supposed to detect for real. It failed in the
+ * release workflow and nowhere else, because only that workflow upgrades npm.
+ *
+ * Accepting both shapes is the fix. Guessing at npm's output format is not
+ * something a packaging test should ever do quietly.
+ */
+function filesFromPackJson(raw: string): string[] {
+  const parsed: unknown = JSON.parse(raw);
+
+  const entries: PackResult[] = Array.isArray(parsed)
+    ? (parsed as PackResult[])
+    : typeof parsed === 'object' && parsed !== null
+      ? Object.values(parsed as Record<string, PackResult>)
+      : [];
+
+  const first = entries[0];
+  if (first === undefined) {
+    throw new Error(
+      `npm pack --json returned no package entry. Shape was: ${raw.slice(0, 200)}. ` +
+        'npm has probably changed its output format again; update filesFromPackJson.',
+    );
+  }
+
+  return (first.files ?? []).map((file) => file.path);
 }
 
 let packed: string[] = [];
@@ -36,8 +68,7 @@ beforeAll(() => {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  const parsed = JSON.parse(raw) as PackResult[];
-  packed = (parsed[0]?.files ?? []).map((file) => file.path);
+  packed = filesFromPackJson(raw);
   expect(packed.length, 'npm pack reported no files at all').toBeGreaterThan(0);
 });
 
