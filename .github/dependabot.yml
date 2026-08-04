@@ -19,6 +19,25 @@ updates:
     labels:
       - dependencies
     groups:
+      # These two families have internal peer constraints, so a major has to
+      # move as a set or not at all. Dependabot's default is one pull request
+      # per package, which split vitest 4 from @vitest/coverage-v8 4 and left
+      # both PRs failing `npm ci` on a peer conflict with the half that had not
+      # moved — a failure that looks like the upgrade being broken when it is
+      # only incomplete. These groups carry `update-types` deliberately
+      # unset, so they cover majors too.
+      vitest:
+        patterns:
+          - vitest
+          - '@vitest/*'
+      eslint:
+        patterns:
+          - eslint
+          - '@eslint/*'
+          - typescript-eslint
+          - 'eslint-config-*'
+          - 'eslint-plugin-*'
+
       production-dependencies:
         dependency-type: production
         update-types:
