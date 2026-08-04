@@ -123,23 +123,30 @@ non-obvious causes:
 
 Both are usually the API key rather than the request.
 
-A `401` means the key was rejected: it has been deleted, it was mistyped, or the
-calling machine is outside the IP allowlist set on the key. The error text says
-so and tells you it cannot be fixed by changing tool arguments — it is a server
-configuration problem.
+A `401` has **two** causes and they look identical. Either the key was rejected
+outright — deleted, mistyped, or called from outside the IP allowlist set on it
+— or the key simply lacks the scope for that endpoint. The Hudu API documents no
+`403` anywhere (`reference/spec-defects.md` A7), and a live Hudu 2.34.2 run
+confirmed that a key created without password access answers `401` on
+`/asset_passwords` and `/password_folders` (F5).
 
-A `404` is more awkward. The Hudu API documents no `403` anywhere
-(`reference/spec-defects.md` A7), so a key that lacks a scope does not get told
-"forbidden": it gets whatever the endpoint returns instead, most often a `404`
-that is indistinguishable from a record that does not exist. If
-`hudu_list_companies` works but `hudu_list_passwords` returns nothing on a tenant
-you know has credentials in it, suspect a key created without password access
-before you suspect empty data. The same applies to a company-scoped key: every
-company except the scoped one reads as missing.
+Tell them apart by how much fails. If **everything** fails, including
+`hudu_get_api_info`, the key itself is the problem. If most tools work and one
+family answers `401`, it is the key's scope — and scope is fixed when a key is
+created, so reissuing the same kind of key changes nothing. Create a new key
+with the capability you need.
 
-Hudu also answers `404` for an unrouted path, so an endpoint that does not exist
-on your Hudu version looks identical to an empty result. `hudu_get_api_info`
-tells you the version; check it when something behaves unexpectedly.
+A `404` is more awkward. It covers a record that does not exist, a record the
+key's company scope hides, and an endpoint that does not exist on your Hudu
+version. On 2.34.2 the response body distinguishes the first two from the third
+— a missing record names its resource ("Network not found") where an unrouted
+path answers a generic `{"status":404,"error":"Not Found"}` — but that is an
+observation rather than a promise. `hudu_get_api_info` tells you the version;
+check it when something behaves unexpectedly.
+
+A get can also succeed and find nothing: `/companies/{id}` and `/articles/{id}`
+answer `200` with an empty body for an id that does not exist. The get tools
+report that as `found: false` with a notice naming the id, never as a record.
 
 ### The assistant says it has no tool for what you asked
 

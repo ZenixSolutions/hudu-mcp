@@ -215,12 +215,16 @@ folders are read-only in this API version (C11).
 Neither list endpoint documents `page` or `page_size` (C2), so both return the
 whole filtered collection in one response — which matters most for addresses,
 where a populated range is tens of thousands of records. Always send a filter.
-`network_type` is an integer with no published mapping (D1); `location_id`
-refers to a locations collection this API does not expose at all (C5). The six
-`status` values appear in the schema prose rather than as an enum (D5), so the
-write tools enforce them and the list filter does not. `DELETE /networks/{id}`
-answers 200 with a message body where every other delete answers 204 (B8); both
-are treated as success.
+`network_type` is an integer with no published mapping (D1) whose only observed
+value is `0`; `location_id` refers to a locations collection this API does not
+expose at all (C5). The six `status` values appear in the schema prose rather
+than as an enum (D5) and a live instance returned them **capitalised** —
+`Assigned`, `DHCP`, `Reserved`, `Unassigned` (F7) — so neither the write tools
+nor the filter enforce a vocabulary that would reject values the API stores;
+match the casing your instance returns. `DELETE /networks/{id}` answers 200 with
+a message body where every other delete answers 204 (B8); both are treated as
+success. Sending an undocumented query parameter to these endpoints fails the
+call outright: `GET /networks?page=1` answers 400 (F4).
 
 | Tool                     | Class       | Purpose                                                                     | Required arguments | Gate                                                  |
 | ------------------------ | ----------- | --------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------- |
@@ -244,9 +248,12 @@ listed through the documented API** (C4) — `rack_storage_role_id` is a
 colour-coded classification, not the cabinet. Going the other way works: filter
 items by `asset_id` to find where a known device is racked. Unit numbering
 direction and inclusivity are both undocumented and no conflict response is
-published for a double-booking (D4); `side` is a string in the list filter and
-an integer in the write body (B7); the item `status` integer has no published
-meanings (D2); and `max_wattage` and `power_draw` carry no unit (D3). Neither
+published for a double-booking (D4); `side` is documented as a string in the list
+filter and an integer in the write body (B7), and observation settles it as the
+lower-case strings `front`, `rear` and `both` (F7), which is what the tools take;
+`status` is documented as an integer with no published meanings (D2) and observed
+as the strings `reserved` and `used` (F7); and `max_wattage` and `power_draw`
+carry no unit (D3). Neither
 collection paginates (C2).
 
 | Tool                            | Class       | Purpose                                                                   | Required arguments | Gate                                                  |

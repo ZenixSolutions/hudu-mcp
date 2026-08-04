@@ -1,17 +1,22 @@
 /**
  * Response envelope handling.
  *
- * Hudu is not consistent about how it returns a collection. Most list endpoints
- * return a bare JSON array; a minority wrap it in a single-key object
- * (`/assets` returns `{ assets: [...] }`, `/matchers` returns `{ matchers: [...] }`,
- * `/procedures`, `/public_photos` and `/cards/lookup` likewise). The published
- * schema for `GET /asset_layouts` is a *single object* where the endpoint in
- * fact returns a list — a documentation defect, recorded in
- * docs/reference/hudu-api-v1.md.
+ * Hudu is not consistent about how it returns a collection. Some list endpoints
+ * return a bare JSON array; ten of them wrap it in a single-key object. The ten
+ * were measured against Hudu 2.34.2 and are recorded in
+ * docs/reference/spec-defects.md F1 — `/companies`, `/asset_layouts`,
+ * `/articles`, `/folders`, `/relations`, `/users`, `/assets`,
+ * `/companies/{company_id}/assets`, `/procedures` and `/public_photos`, plus
+ * `/matchers` and `/cards/lookup`. The captured contract documents none of
+ * those envelopes, so observation is the only source for them and each one is
+ * declared as a `listKey` on the owning `ResourceSpec`.
  *
  * Rather than encode a per-endpoint rule that breaks the next time the vendor
  * changes one, `unwrapList` accepts every shape and normalises it. A hard
  * failure here would surface to the model as an unexplainable empty result.
+ * The declared key is preferred, but its *absence* from the body falls through
+ * to the same tolerant handling as an undeclared one: an endpoint that stops
+ * wrapping must not read as "there are none of these".
  */
 
 import { HuduApiError } from './errors.js';
@@ -31,7 +36,11 @@ export function unwrapList<T>(data: unknown, key: string | undefined, context: s
   if (Array.isArray(data)) return data as T[];
 
   if (isRecord(data)) {
-    if (key !== undefined) {
+    // `key in data` rather than a truthiness check: a declared key that is
+    // simply not on the body means the envelope has changed or was never
+    // there, and that case belongs to the fallbacks below. Only a key that is
+    // present and empty is genuinely an empty collection.
+    if (key !== undefined && key in data) {
       const wrapped = data[key];
       if (Array.isArray(wrapped)) return wrapped as T[];
       if (wrapped === undefined || wrapped === null) return [];
@@ -65,7 +74,14 @@ export function unwrapList<T>(data: unknown, key: string | undefined, context: s
  * Normalise a single-record response.
  *
  * Some endpoints return the record bare, others wrap it under the singular
- * resource name.
+ * resource name. Seven wrappers were measured on Hudu 2.34.2 and are recorded
+ * in docs/reference/spec-defects.md F2; the captured contract documents none of
+ * them, so a tool that omits its `recordKey` hands the *wrapper* back to the
+ * model — `{"company": {...}}` where a company was asked for.
+ *
+ * A declared key that is present but null means the endpoint answered "no such
+ * record" inside a 200 (F3), and is reported as absent rather than as the
+ * wrapper object.
  *
  * Returns an open record rather than a caller-chosen generic. Hudu's record
  * shapes vary by instance version and, for assets, by layout, so a generic here
@@ -78,6 +94,11 @@ export function unwrapRecord(
 ): Record<string, unknown> | undefined {
   if (data === undefined || data === null) return undefined;
   if (!isRecord(data)) return undefined;
-  if (key !== undefined && isRecord(data[key])) return data[key];
+  if (key !== undefined && key in data) {
+    const wrapped = data[key];
+    return isRecord(wrapped) ? wrapped : undefined;
+  }
+  // The declared key is absent: the body is the record itself, which is what an
+  // unwrapped endpoint returns and what a renamed envelope degrades to.
   return data;
 }

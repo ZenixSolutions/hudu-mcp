@@ -157,10 +157,31 @@ describe('get tools', () => {
     expect(server.http.last().path).toBe('/api/v1/companies/42');
   });
 
-  it('returns null rather than a crash when the record is absent from the body', async () => {
+  it('reports a 200 with no record as "not found" rather than as a null record', async () => {
+    // GET /companies/{id} answers HTTP 200 with a body of `null` for an id that
+    // does not exist (spec-defects.md F3), so this never reaches the error path.
+    // A bare `null` here reads to a model as "the record is empty".
     const server = testServer({ status: 200, text: '' });
 
-    expect(toolJson(await server.call('hudu_get_company', { id: 1 }))).toBeNull();
+    const response = await server.call('hudu_get_company', { id: 1 });
+    const result = response.structuredContent ?? {};
+
+    expect(response.isError, 'a 200 with no record is an answer, not a failure').toBeUndefined();
+    expect(result['found']).toBe(false);
+    expect(result['id']).toBe(1);
+    expect(result['record']).toBeNull();
+    expect(toolText(response)).toContain('No company with id 1 exists on this Hudu instance');
+  });
+
+  it('reports a 200 with a null-valued envelope as "not found"', async () => {
+    // The wrapped form of the same answer: `{"company": null}` must not be
+    // handed back as a record whose sole field is empty.
+    const server = testServer({ status: 200, json: { company: null } });
+
+    const result = (await server.call('hudu_get_company', { id: 2 })).structuredContent ?? {};
+
+    expect(result['found']).toBe(false);
+    expect(result['id']).toBe(2);
   });
 
   it('turns a 404 into guidance instead of an exception', async () => {
@@ -303,9 +324,10 @@ describe('structured content', () => {
   });
 
   it('wraps a non-object result so structured content is always an object', async () => {
+    // hudu_get_api_info returns the body as-is, so an empty one is a bare null.
     const server = testServer({ status: 200, text: '' });
 
-    const response = await server.call('hudu_get_company', { id: 1 });
+    const response = await server.call('hudu_get_api_info', {});
 
     expect(response.structuredContent).toEqual({ result: null });
   });

@@ -82,6 +82,9 @@ export const articlesSpec: ResourceSpec = {
   title: 'Article',
   titlePlural: 'Articles',
   basePath: '/articles',
+  // Undocumented envelopes, measured on Hudu 2.34.2 (spec-defects.md F1, F2).
+  listKey: 'articles',
+  recordKey: 'article',
   summary:
     'An article is a knowledge-base document: HTML content, optionally filed in a folder and ' +
     'optionally scoped to one company. Articles with no company are global to the instance.',
@@ -150,6 +153,9 @@ export const foldersSpec: ResourceSpec = {
   title: 'Folder',
   titlePlural: 'Folders',
   basePath: '/folders',
+  // Undocumented envelopes, measured on Hudu 2.34.2 (spec-defects.md F1, F2).
+  listKey: 'folders',
+  recordKey: 'folder',
   summary:
     'A folder groups knowledge-base articles. Folders nest through `parent_folder_id`, and a ' +
     'folder carrying a `company_id` belongs to that company rather than to the global ' +
@@ -257,6 +263,9 @@ export const proceduresSpec: ResourceSpec = {
   titlePlural: 'Procedures',
   basePath: '/procedures',
   listKey: 'procedures',
+  // GET /procedures/{id} wraps the record as {procedure: {...}} on Hudu 2.34.2
+  // (spec-defects.md F2).
+  recordKey: 'procedure',
   summary:
     'A procedure — called a Process in the Hudu interface — is an ordered checklist of tasks ' +
     'with a completion count, used for repeatable work such as onboarding, offboarding and ' +

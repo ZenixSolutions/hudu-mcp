@@ -22,15 +22,22 @@ undocumented rather than guessing.
 
 `hudu_get_api_info` reports the version and build date of whatever instance you
 are pointed at. Call it when something behaves unexpectedly: Hudu answers `404`
-identically for a missing record and for an endpoint that does not exist on that
-build, so the version is often the only way to tell the two apart.
+both for a missing record and for an endpoint that does not exist on that build,
+so the version is often the only way to tell the two apart. On Hudu 2.34.2 the
+response bodies do differ — a missing record names its resource ("Network not
+found"), an unrouted path answers a generic `{"status":404,"error":"Not
+Found"}` — but that distinction is an observation, not a published contract.
+Note also that `GET /api_info` on 2.34.2 returned a **malformed `date`** of
+`2026-31-05`; the field is passed through verbatim rather than parsed (F).
 
 ## Counting and pagination
 
-**No collection endpoint returns a total count (C1).** There is no envelope, no
-`total`, no `X-Total-Count` and no `Link` header anywhere in the contract.
-Whether more records exist can only be inferred from whether a page came back
-full.
+**No collection endpoint returns a total count (C1).** There is no `total`, no
+`X-Total-Count` and no `Link` header anywhere in the contract, and none appeared
+on a live instance either. Whether more records exist can only be inferred from
+whether a page came back full. Ten collections _do_ wrap their array in a
+single-key envelope (F1) — that envelope carries the array and nothing else, so
+it adds no counting.
 
 This server therefore emits no `total` and no `has_more`. Both would have to be
 invented, and an agent reading `has_more: false` would report a partial inventory
@@ -145,13 +152,20 @@ crossed a line. If a `429` does arrive it is retried with backoff, honouring
 `Retry-After` when the response happens to carry one — but nothing in the
 contract promises it will.
 
-**No `403` is documented anywhere (A7)**, despite keys being scoped at creation
-for password access, destructive actions, exports, IP allowlist and company
-scope. A scope failure therefore arrives as something else, most often `401` or
-`404`. That makes "the key lacks this permission" and "the record does not exist"
-hard to tell apart. If reads work but one family of records is consistently
-empty, suspect the key's scope before you conclude the data is missing. The
-client still translates a `403` into scope-specific guidance if one ever arrives.
+**A scope failure is a `401`, not a `403` (A7, F5).** No `403` is documented
+anywhere in the contract, despite keys being scoped at creation for password
+access, destructive actions, exports, IP allowlist and company scope — and a
+live Hudu 2.34.2 run settled what arrives instead: a key created without
+password access answered **`401`** on `/asset_passwords` and `/password_folders`,
+and no `403` was seen at all.
+
+The practical consequence matters. A `401` on this API does not mean "your key
+is wrong". If every endpoint fails, including `hudu_get_api_info`, the key is
+bad, expired or calling from outside its IP allowlist. If most endpoints work
+and one family answers `401`, the key simply lacks that scope — reissuing it
+will not help unless the new key is created with that capability, which cannot
+be added afterwards. The `401` guidance names both causes. The `403` branch is
+kept for other Hudu versions and is marked unobserved.
 
 ## Behaviour the contract does not specify
 
@@ -169,15 +183,22 @@ know what was at stake, and re-check afterwards what survived.
 
 Other undocumented semantics, each recorded in the tool that exposes it:
 
-- `network_type` is an integer with no published mapping (D1).
-- Rack item `status` is an integer with no published meanings (D2).
+- `network_type` is an integer with no published mapping (D1). The only value
+  seen on a live instance was `0`, which says what is in use there rather than
+  what it means (F7).
+- Rack item `status` has no published meanings (D2). It is typed as an integer
+  in the contract and observed as the strings `reserved` and `used` (F7), so the
+  tools take a string.
 - `max_wattage` and `power_draw` carry no unit (D3).
 - Rack unit numbering is unexplained: which end of the cabinet holds the lowest
   unit, whether `start_unit`–`end_unit` is inclusive, and what happens on overlap
   are all absent, and no conflict response is documented (D4).
-- `IpAddress.status` values appear only in prose, not as a schema enum (D5).
+- `IpAddress.status` values appear only in prose, not as a schema enum (D5), and
+  the prose is wrong about casing: a live instance stored `Assigned`, `DHCP`,
+  `Reserved` and `Unassigned` (F7). Neither vocabulary is enforced here.
 - Relation `fromable_type`/`toable_type` values appear only in a parenthetical
-  (D6), so the list may not be exhaustive on newer versions.
+  (D6), and that list is provably incomplete — a live instance carried
+  `IpAddress`, which it omits (F7). Not enforced here either.
 - `in_company` on `GET /folders` is described in eight words (D7).
 - Most definitions carry no `required` array (D8), so which fields a create
   actually needs is not derivable from the contract.

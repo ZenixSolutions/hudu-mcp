@@ -36,10 +36,11 @@ Two habits are worth forming early:
 
 ## Pagination, and why a full page means nothing
 
-No Hudu collection endpoint returns a total count. There is no envelope, no
-`total`, no `X-Total-Count` and no `Link` header
-(`reference/spec-defects.md` C1). Whether more records exist can only be inferred
-from whether the page you asked for came back full.
+No Hudu collection endpoint returns a total count. There is no `total`, no
+`X-Total-Count` and no `Link` header (`reference/spec-defects.md` C1). Ten
+collections wrap their array in a single-key envelope, which this client unwraps
+and which carries no count of its own (F1). Whether more records exist can only
+be inferred from whether the page you asked for came back full.
 
 This server therefore emits no `total` and no `has_more` — both would have to be
 invented, and an agent reading `has_more: false` would report a partial inventory
@@ -313,19 +314,28 @@ Notes that will save you a wrong record:
   host falls in.
 - **`status` has six documented values**: `unassigned`, `assigned`, `reserved`,
   `deprecated`, `dhcp`, `slaac`. They appear in the schema's prose rather than as
-  an enum (D5); the write tools enforce them, the list filter does not.
+  an enum (D5), and a live Hudu 2.34.2 instance returned them **capitalised** —
+  `Assigned`, `DHCP`, `Reserved`, `Unassigned` (F7). Nothing here enforces either
+  list, because an enum built from the prose would reject values the API
+  actually stores. Read an existing address and match the casing your instance
+  uses; filtering on `assigned` where the records say `Assigned` may match
+  nothing.
 - **`asset_id` is the join that answers "what is on 10.20.0.14?"** Set it when the
   address belongs to a documented device.
-- **`network_type` is an integer with no published mapping** (D1), and
-  `location_id` refers to a locations collection this API does not expose at all
-  (C5). For both, copy a value from an existing record on the same instance rather
-  than choosing one.
+- **`network_type` is an integer with no published mapping** (D1) — the only
+  value seen on a live instance was `0` — and `location_id` refers to a
+  locations collection this API does not expose at all (C5). For both, copy a
+  value from an existing record on the same instance rather than choosing one.
 - **Neither list endpoint paginates** (C2). Filter by `network_id` or `company_id`
-  rather than listing addresses unfiltered.
+  rather than listing addresses unfiltered. Do not send `page` anyway — Hudu
+  rejects a query parameter an endpoint does not document, so
+  `GET /networks?page=1` answers `400` rather than ignoring it (F4).
 
 To retire an address, prefer `hudu_update_ip_address` with
-`{"status": "unassigned"}` over deleting it: the record and its history survive,
-and deletion only stops Hudu documenting an address the host still holds.
+`{"status": "Unassigned"}` over deleting it: the record and its history survive,
+and deletion only stops Hudu documenting an address the host still holds. Use
+whichever casing your instance already stores — a live Hudu 2.34.2 instance
+capitalises these values (F7).
 
 ## Publish a knowledge base article
 

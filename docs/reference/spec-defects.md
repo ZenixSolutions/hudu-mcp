@@ -13,6 +13,11 @@ Nothing here is inferred from a third-party client or from another instance.
 Where a behaviour is undocumented, it is recorded as undocumented rather than
 guessed at — Constitution Article IV.
 
+**Sections A–E are claims read out of the document. Section F is measured.** A
+contract run against a live Hudu **2.34.2** instance found the captured document
+wrong in ways that broke shipped tools, and where the two disagree the
+observation wins. Items corrected by that run say so in place and point at F.
+
 ---
 
 ## A. Security-relevant
@@ -53,6 +58,15 @@ company scope. A scope failure therefore arrives as something else — most
 likely `401` or `404` — which makes "the key lacks this permission" and "the
 record does not exist" hard to tell apart.
 
+> **Resolved by observation (F5).** It is `401`. On Hudu 2.34.2, a key created
+> without password access answered `401` on `/asset_passwords` and on
+> `/password_folders`, and no `403` was seen anywhere on that
+> instance. The `401` guidance in `src/api/errors.ts` therefore names key scope
+> as a cause alongside a bad, expired or IP-blocked key; the `403` branch is
+> kept for other Hudu versions and is marked unobserved. Note the practical
+> consequence: `401` no longer means "your key is wrong", so an operator must
+> not respond to one by reissuing a working key.
+
 **A8. `429` is documented nowhere**, and no `Retry-After` or `X-RateLimit-*`
 header appears in the contract, even though the description states a 300/minute
 limit. Rate-limit handling must therefore be defensive and client-side; the
@@ -90,6 +104,14 @@ absent from `hudu_update_asset_layout`.
 query filter and as an integer in the body schema**, with no mapping given for
 the integer.
 
+> **Resolved by observation (F7).** It is a lower-case string. Live records
+> carry `front`, `rear` and `both` — so the body schema's integer typing is
+> contradicted by the API itself, the filter's capitalisation is wrong, and
+> `both` appears in no Hudu documentation at all. `hudu_create_rack_storage_item`
+> and `hudu_update_rack_storage_item` take a string, and the filter is
+> documented with the observed casing. An integer was never sendable in
+> practice: there was no published mapping to send one from.
+
 **B8. `DELETE /networks/{id}` answers `200` with a JSON message body**, where
 every other delete in the API answers `204`.
 
@@ -98,11 +120,20 @@ creation answers `201`.
 
 ## C. Missing capability — the API cannot answer the question
 
-**C1. No collection endpoint returns a total count.** There is no envelope, no
-`total`, no `X-Total-Count`, and no `Link` header. Whether more records exist
-can only be inferred from a full page. This is why this server emits no
-`has_more` and no `total`: both would have to be invented, and an agent reading
-`has_more: false` would report a partial inventory as complete.
+**C1. No collection endpoint returns a total count.** There is no `total`, no
+`X-Total-Count`, and no `Link` header. Whether more records exist can only be
+inferred from a full page. This is why this server emits no `has_more` and no
+`total`: both would have to be invented, and an agent reading `has_more: false`
+would report a partial inventory as complete.
+
+> **Half-corrected by observation (F1).** The claim as originally written also
+> said "there is no envelope". That part is wrong: ten collections _do_ wrap
+> their array in a single-key object. What they do not carry is a count — the
+> envelope holds the array and nothing else, no sibling `total`, `meta` or
+> `pagination` key, and no total-bearing header. So C1's consequence stands
+> unchanged and `page_was_full` remains the only honest signal; only the
+> statement about the response shape was wrong, and it was wrong in a way that
+> cost six list tools their results. See F1.
 
 **C2. Five collections have no pagination whatsoever** — `/networks`,
 `/ip_addresses`, `/rack_storages`, `/rack_storage_items`, `/uploads` document
@@ -161,9 +192,19 @@ the only removal path.
 
 ## D. Under-documented — present but unexplained
 
-**D1. `network_type` is "an integer" with no mapping published.**
+**D1. `network_type` is "an integer" with no mapping published.** Still true:
+the live run found `0` on every network on the instance and nothing else, which
+says what is in use there rather than what the field means or what else is
+legal. The value is recorded in the tool description as an observation, not as a
+mapping (F7).
 
 **D2. `status` on rack storage items is an integer with no meanings published.**
+
+> **Contradicted by observation (F7).** Live records carry the strings
+> `reserved` and `used`, not integers. The write and filter arguments therefore
+> take a string. No meaning is published for either value and no other value was
+> seen, so the underlying complaint — that the vocabulary is undocumented —
+> stands; only the type was wrong.
 
 **D3. `max_wattage` and `power_draw` carry no unit.**
 
@@ -175,10 +216,30 @@ overlap are all absent. No conflict response is documented for a double-booking.
 unassigned, assigned, reserved, deprecated, dhcp, or slaac" — in the property
 description, not as a schema `enum`.
 
+> **Contradicted by observation (F7).** The prose is wrong about casing and
+> possibly about content. Live records carry `Assigned`, `DHCP`, `Reserved` and
+> `Unassigned` — capitalised, and `DHCP` upper-cased rather than merely
+> title-cased. The six prose values were previously enforced as a `z.enum` on
+> the write arguments, which would have **rejected every value this API actually
+> stores**, locally, before Hudu saw the call. That enum is gone: `status` is a
+> string whose description names both vocabularies and says which was observed.
+> Losing strict validation is the right trade when the strictness is provably
+> wrong — a client that refuses a legal value leaves the caller no way through,
+> whereas a wrong value costs one 422 from the party that actually knows.
+
 **D6. Relation `fromable_type`/`toable_type` values appear only in a
 parenthetical** (`Asset`, `Website`, `Procedure`, `AssetPassword`, `Company`,
 `Article`), not as a schema `enum`, so the list may not be exhaustive on newer
 versions.
+
+> **Confirmed non-exhaustive by observation (F7).** Live relations carry
+> `Article`, `Asset`, `AssetPassword`, `Procedure` and **`IpAddress`** — the
+> last of which is in no published list. `Website` and `Company` are documented
+> but were not present on that instance, so neither set is complete and the
+> union of the two is the best available answer. The `z.enum` on
+> `hudu_create_relation` is therefore gone for the same reason as D5: it would
+> have refused to create a relation to an IP address, which is a documented
+> Hudu feature the API demonstrably supports.
 
 **D7. `in_company` on `GET /folders` is described in eight words** — "When true,
 only returns company-specific KB articles" — on the folders endpoint, describing
@@ -215,3 +276,145 @@ upload is out of scope for 0.1.0; the read side of both is implemented.
 **E2. `GET /cards/jump`** is a browser redirect helper, not a data endpoint, and
 is documented as bypassing API key authentication (A5). `GET /cards/lookup` is
 implemented; `jump` is not.
+
+## F. Observed behaviour — measured against a live instance
+
+Everything above this line was read out of `api-docs.json`. Everything below it
+was **measured** against a live Hudu instance on a read-only key, and where the
+two disagree the measurement wins. That is a deliberate departure from the
+"documented surface only" rule in `CLAUDE.md` invariant 6: that rule exists to
+stop this server inventing behaviour the API does not promise, not to make it
+keep shipping code that provably does not work.
+
+**Instance:** Hudu **2.34.2**, reported by `GET /api_info`.
+
+**The instance's own `date` field is malformed.** `GET /api_info` returned a
+`date` of `2026-31-05` — month 31, day 05 — which is not a valid ISO-8601 date
+in any interpretation and is presumably a `YYYY-DD-MM` mix-up upstream. Nothing
+in this server parses it, and nothing should start: report it verbatim.
+`hudu_get_api_info` passes both fields through unchanged.
+
+**Scope of the run.** The key used had **password access disabled**, so
+`/asset_passwords` and `/password_folders` answered `401` and their response
+shapes were **not** observed. Every claim about those two endpoints in this
+document is still document-derived. `/expirations`, `/uploads`, `/websites`,
+`/magic_dash`, `/activity_logs`, `/ip_addresses`, `/rack_storages` and
+`/rack_storage_items` returned bare arrays, matching what the code assumed.
+
+### F1. Ten list endpoints wrap their array; the contract documents none of them
+
+| Endpoint                         | Envelope key    | Was            |
+| -------------------------------- | --------------- | -------------- |
+| `/companies`                     | `companies`     | **undeclared** |
+| `/asset_layouts`                 | `asset_layouts` | **undeclared** |
+| `/articles`                      | `articles`      | **undeclared** |
+| `/folders`                       | `folders`       | **undeclared** |
+| `/relations`                     | `relations`     | **undeclared** |
+| `/users`                         | `users`         | **undeclared** |
+| `/assets`                        | `assets`        | correct        |
+| `/companies/{company_id}/assets` | `assets`        | correct        |
+| `/procedures`                    | `procedures`    | correct        |
+| `/public_photos`                 | `public_photos` | correct        |
+| `/matchers`                      | `matchers`      | correct        |
+
+Six shipped list tools expected a bare array. `unwrapList` does not throw on a
+wrong shape — by design, because a hard failure there reaches the model as an
+unexplainable error — so those tools returned an **empty list**, which an agent
+reads as "this Hudu instance has no companies". That is the worst failure mode
+this server has: silent, plausible and wrong.
+
+Each envelope is now declared as a `listKey` on the owning `ResourceSpec`.
+`unwrapList` was also corrected so that a declared key which is _absent_ from
+the body falls through to the same tolerant handling as an undeclared one,
+rather than short-circuiting to an empty list: the declaration must not make the
+client more brittle than it was.
+
+No envelope carries anything besides the array — no `total`, `meta` or
+`pagination` sibling — so C1's consequence is unaffected.
+
+### F2. Seven single-record endpoints wrap the record
+
+`/companies/{id}` → `company` · `/companies/{company_id}/assets/{id}` → `asset`
+(already correct) · `/asset_layouts/{id}` → `asset_layout` · `/articles/{id}` →
+`article` · `/folders/{id}` → `folder` · `/procedures/{id}` → `procedure` ·
+`/users/{id}` → `user`
+
+`unwrapRecord` with no `recordKey` returns the body unchanged, so six get-tools
+handed back `{"company": {...}}` where a company was asked for. Quieter than F1
+and just as wrong: every field lookup on the result misses. Each key is now
+declared. `unwrapRecord` also treats a declared key whose value is `null` as
+"no record" rather than returning the wrapper — see F3.
+
+### F3. "Record not found" is inconsistent, and two endpoints answer 200
+
+| Request                    | Response                                 |
+| -------------------------- | ---------------------------------------- |
+| `GET /companies/999999999` | **HTTP 200**, body `null`                |
+| `GET /articles/999999999`  | **HTTP 200**, body `null`                |
+| `GET /networks/999999999`  | 404 `{"error":"Network not found"}`      |
+| `GET /users/999999999`     | 404 `{"error":"User not found"}`         |
+| `GET /no_such_endpoint`    | 404 `{"status":404,"error":"Not Found"}` |
+
+Two consequences.
+
+First, **a get can succeed and find nothing**. The 200 never reaches the error
+path, so `hudu_get_company` and `hudu_get_article` previously returned a bare
+`null` — which a model can read as "the record exists and its fields are empty"
+as easily as "there is no such record". `buildGetTool` and the hand-written
+`hudu_get_asset` now return `{found: false, resource, id, record: null}` with a
+notice naming the id and saying the record does not exist on this instance. No
+404 is fabricated: the call genuinely succeeded, so reporting it as an error
+would be a different lie.
+
+Second, **a 404 and an unrouted path are distinguishable after all**, contrary
+to what the get-tool descriptions and the 404 guidance previously said: a
+missing record names its resource, an unrouted path does not. The guidance in
+`src/api/errors.ts` now says to read the body, and no longer claims the two are
+identical.
+
+### F4. Hudu rejects an unknown query parameter outright
+
+`GET /networks?page=1` answers **`400 {"error":"page is not a valid filter
+parameter."}`**.
+
+This confirms `paginated: false` on the five collections that document no
+paging (C2) — and it makes "send it anyway and let the server ignore it" an
+unsafe pattern here, because one unrecognised parameter fails the whole call.
+Recorded in the `ResourceSpec` documentation in `src/tools/resource.ts`, since
+that is where a future author would otherwise add a parameter speculatively.
+
+### F5. A scope failure is 401, not 403
+
+`GET /asset_passwords` and `GET /password_folders` both answered `401` for a key
+created without password access. No `403` was seen anywhere on the instance.
+See A7 for what changed in the guidance.
+
+### F6. `GET /matchers` without `integration_id` answers 500
+
+Not 400, and not an empty list. With `integration_id` the same call answers 200.
+The parameter is required by the Zod schema, which was already right, but the
+failure mode was recorded as a 404 that "reads as no matchers exist" — the real
+one reads as an instance fault. `hudu_list_matchers` now says that a 500 from
+this endpoint means a missing parameter rather than an outage.
+
+### F7. Values for fields the contract left undocumented
+
+Each of these is one instance's data, not a published contract, and is worded as
+such in the tool descriptions. Three of them contradict a schema this server was
+enforcing.
+
+| Field                       | Observed values                                               | Against the contract                                                   |
+| --------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `ip_addresses.status`       | `Assigned`, `DHCP`, `Reserved`, `Unassigned`                  | **Contradicts D5**: prose lists six lower-case values. Enum removed.   |
+| `relations.*able_type`      | `Article`, `Asset`, `AssetPassword`, `Procedure`, `IpAddress` | **Contradicts D6**: `IpAddress` is in no published list. Enum removed. |
+| `rack_storage_items.side`   | `front`, `rear`, `both`                                       | **Contradicts B7**: body schema types it as an integer. Now a string.  |
+| `rack_storage_items.status` | `reserved`, `used`                                            | **Contradicts D2**: schema types it as an integer. Now a string.       |
+| `networks.network_type`     | `0` (the only value present)                                  | Consistent with D1; says nothing about the mapping.                    |
+
+The two removed enums are the important entry. Both were derived from prose in
+the contract, and both would have rejected values the API demonstrably stores —
+locally, before the request was sent, with no way for the caller to get past
+them. A client that refuses a legal value is worse than one that forwards an
+illegal one: the second costs a 422 from the party that actually knows the
+answer. Neither field is validated here now; both descriptions name the
+documented vocabulary, name the observed vocabulary, and say which is which.

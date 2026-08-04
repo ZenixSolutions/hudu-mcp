@@ -231,7 +231,16 @@ const revealTool = defineTool({
     const record = unwrapRecord(response.data, undefined);
 
     if (record === undefined) {
-      return { data: null, notice: `No password record with id ${id}.` };
+      // A 200 with no record is a real Hudu answer, not an error path
+      // (spec-defects.md F3). Say so in a shape that cannot be read as a
+      // credential whose value happens to be blank.
+      return {
+        data: { found: false, resource: 'passwords', id, record: null },
+        notice:
+          `No password record with id ${id} exists on this Hudu instance. The request ` +
+          'succeeded and returned no record — this is not a hidden or withheld secret, and ' +
+          'retrying will not produce one.',
+      };
     }
 
     const exposed = findSecretFields(record);

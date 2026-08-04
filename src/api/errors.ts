@@ -98,17 +98,30 @@ export class CapabilityDisabledError extends Error {
 const GUIDANCE: Record<number, string> = {
   400: 'The request was malformed. Check parameter names and types against the tool schema.',
   401:
-    'Authentication failed. Verify HUDU_API_KEY is a current key from Hudu Admin -> Basic ' +
-    'Information -> API Keys, and that the calling IP is inside any whitelist set on that key. ' +
-    'This is a server configuration problem — it cannot be fixed by changing tool arguments.',
+    'Rejected by Hudu as unauthorised. There are two distinct causes and they look identical. ' +
+    '(1) The key lacks the SCOPE for this endpoint. Hudu keys are scoped at creation for ' +
+    'password access, destructive actions and exports, and a key without password access ' +
+    'answers 401 — not 403 — on /asset_passwords and /password_folders (observed on Hudu ' +
+    '2.34.2). If other endpoints work and only one family fails, this is the cause, and the ' +
+    'scope cannot be widened afterwards: a new key is required. (2) The key itself is wrong, ' +
+    'expired or revoked, or the calling IP is outside the allowlist set on it — in which case ' +
+    'every endpoint fails, including /api_info. Check HUDU_API_KEY against Hudu Admin -> Basic ' +
+    'Information -> API Keys. Either way this is a server configuration problem and cannot be ' +
+    'fixed by changing tool arguments.',
   403:
     'The API key lacks the scope for this operation. Hudu keys are scoped at creation for ' +
     'password access, destructive actions, exports, IP whitelist and company scope, and those ' +
-    'options cannot be changed afterwards — a new key is required.',
+    'options cannot be changed afterwards — a new key is required. Note that no 403 was ' +
+    'observed on Hudu 2.34.2, where a scope failure answers 401 instead; this branch is kept ' +
+    'for other Hudu versions and is unconfirmed on any instance.',
   404:
-    'No such record, or the API key is scoped to a company that does not contain it. Note that ' +
-    'Hudu returns 404 for both a missing record and an unrouted path, so also confirm the ' +
-    'resource exists on this Hudu version.',
+    'No such record, or the API key is scoped to a company that does not contain it, or the ' +
+    'endpoint does not exist on this Hudu version — Hudu answers 404 for all three. The body ' +
+    'usually tells them apart: a missing record names its resource ("Network not found"), ' +
+    'while an unrouted path answers a generic {"status":404,"error":"Not Found"} (observed on ' +
+    'Hudu 2.34.2). Read the API detail above before assuming the record is gone, and note that ' +
+    'some endpoints report a missing record as 200 with an empty body instead of as a 404 at ' +
+    'all, so a 404 here does not rule the id out everywhere.',
   422:
     'Hudu rejected the payload as invalid. Read the API detail above — it usually names the ' +
     'offending field — then correct that field and retry.',
@@ -119,6 +132,11 @@ const GUIDANCE: Record<number, string> = {
 };
 
 const kindForStatus = (status: number): HuduErrorKind => {
+  // 401 stays `auth` even though it is also how Hudu 2.34.2 reports a key-scope
+  // failure (spec-defects.md A7, F5). The two are indistinguishable from the
+  // response, so the classification names the commoner cause and the guidance
+  // above names both; guessing `permission` here would be no more accurate and
+  // would make a genuinely bad key read as a scope problem.
   if (status === 401) return 'auth';
   if (status === 403) return 'permission';
   if (status === 404) return 'not_found';

@@ -33,7 +33,10 @@ const noPagingNote =
   'false` and `next_page: null` accordingly — there is no second page to ask for, and what you ' +
   'get back is the complete set for the filters given. If the result comes back marked ' +
   '`truncated`, that is this server trimming the response to fit its output budget, not the ' +
-  'end of the data; narrow the filters or use `fields` to see the rest.';
+  'end of the data; narrow the filters or use `fields` to see the rest.\n\n' +
+  'Sending them anyway is not a harmless no-op: Hudu rejects a query parameter an endpoint ' +
+  'does not document rather than ignoring it — `GET /networks?page=1` answers 400 "page is not ' +
+  'a valid filter parameter" on 2.34.2 — so an undocumented parameter fails the whole call.';
 
 const undocumentedUnitNote =
   'Hudu states no unit for this number, so it is comparable with other values from the same ' +
@@ -224,25 +227,30 @@ const rackItemWritableFields = {
     .optional()
     .describe(`The other end of the unit range this item occupies. ${unitRangeNote}`),
   side: z
-    .number()
-    .int()
+    .string()
+    .min(1)
     .optional()
     .describe(
-      'Which face of the rack the item is mounted on. The spec contradicts itself on this ' +
-        'field: the list filter documents it as the string "Front" or "Rear", while the create ' +
-        'and update body documents it as an integer with no published mapping. This argument ' +
-        'follows the body and takes an integer. The only reliable way to learn which integer ' +
-        'means which face is to read an item you know the physical side of with ' +
-        'hudu_get_rack_storage_item.',
+      'Which face of the rack the item is mounted on, as a lower-case string. The spec ' +
+        'contradicts itself here (B7): the list filter types it as the string "Front" or ' +
+        '"Rear" while the create and update body types it as an integer with no published ' +
+        'mapping. Observation settles it — a live Hudu 2.34.2 instance stores "front", "rear" ' +
+        'and "both", lower-cased strings, so the integer typing in the body schema is ' +
+        'contradicted by the API itself and this argument takes a string. "both" appears in no ' +
+        'Hudu documentation at all and is how a full-depth device is recorded. Read an ' +
+        'existing item with hudu_get_rack_storage_item if your instance disagrees.',
     ),
   status: z
-    .number()
-    .int()
+    .string()
+    .min(1)
     .optional()
     .describe(
-      'Status code for the item, as an integer. Hudu publishes no list of legal values and no ' +
-        'meaning for any of them, so copy a value from an existing item instead of choosing a ' +
-        'number.',
+      'State of the mounted item, as a string. The spec types this as an integer and publishes ' +
+        'no meaning for any value (D2); a live Hudu 2.34.2 instance returned the strings ' +
+        '"reserved" and "used", so the documented integer is contradicted by observation the ' +
+        'same way `side` is. Those two are the only values seen and Hudu names no others, so ' +
+        'copy what an existing item on your instance uses rather than inventing a state. Send ' +
+        'a numeric value as a string if your instance turns out to use one.',
     ),
   reserved_message: z
     .string()
@@ -336,17 +344,24 @@ export const rackStorageItemsSpec: ResourceSpec = {
       .optional()
       .describe('Return only items whose end unit equals this value exactly.'),
     status: z
-      .number()
-      .int()
-      .optional()
-      .describe('Return only items with this integer status. No legal values are documented.'),
-    side: z
       .string()
+      .min(1)
       .optional()
       .describe(
-        'Return only items mounted on this face: the filter documents the strings "Front" and ' +
-          '"Rear". Note that the create and update body documents the same field as an ' +
-          'integer, so the value you filter with is not the value you write.',
+        'Return only items in this state. The filter is documented as an integer and no legal ' +
+          'values are published (D2), but a live Hudu 2.34.2 instance stores the strings ' +
+          '"reserved" and "used" — so this takes a string and passes it through verbatim. Read ' +
+          'the values your instance uses from an unfiltered hudu_list_rack_storage_items first.',
+      ),
+    side: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        'Return only items mounted on this face. The filter is documented as "Front" or ' +
+          '"Rear"; a live Hudu 2.34.2 instance stores "front", "rear" and "both", lower-cased. ' +
+          'Match the casing your instance returns rather than the documented capitalisation, ' +
+          'and note that "both" is undocumented but real.',
       ),
     created_at: z.string().optional().describe(timestampRangeDescription),
     updated_at: z.string().optional().describe(timestampRangeDescription),

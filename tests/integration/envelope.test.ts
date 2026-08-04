@@ -83,6 +83,22 @@ describe('unwrapList', () => {
       [{ id: 1 }],
     );
   });
+
+  it('falls through to the fallbacks when the declared key is not on the body', () => {
+    // A declared key that is simply absent means the envelope changed or was
+    // never there — the tolerant handling still applies. Short-circuiting to []
+    // here would make declaring a key (F1) more brittle than declaring none.
+    expect(unwrapList({ data: [{ id: 1 }] }, 'companies', 'GET /companies')).toEqual([{ id: 1 }]);
+    expect(unwrapList({ id: 4 }, 'asset_layouts', 'GET /asset_layouts')).toEqual([{ id: 4 }]);
+    expect(unwrapList([{ id: 1 }], 'companies', 'GET /companies')).toEqual([{ id: 1 }]);
+  });
+
+  it('treats a present-but-empty declared key as an empty collection', () => {
+    // The one case that genuinely means "no records": the key is there and
+    // carries nothing.
+    expect(unwrapList({ companies: [] }, 'companies', 'GET /companies')).toEqual([]);
+    expect(unwrapList({ companies: null }, 'companies', 'GET /companies')).toEqual([]);
+  });
 });
 
 describe('unwrapRecord', () => {
@@ -101,5 +117,13 @@ describe('unwrapRecord', () => {
   it('returns undefined for an empty body', () => {
     expect(unwrapRecord(undefined, undefined)).toBeUndefined();
     expect(unwrapRecord(null, 'company')).toBeUndefined();
+  });
+
+  it('reports a null-valued envelope as no record, not as the wrapper', () => {
+    // `{"company": null}` is "no such record" wearing an envelope. Returning the
+    // wrapper would hand a caller an object whose only field is empty, which is
+    // the F3 failure in a different costume.
+    expect(unwrapRecord({ company: null }, 'company')).toBeUndefined();
+    expect(unwrapRecord({ company: 'nonsense' }, 'company')).toBeUndefined();
   });
 });

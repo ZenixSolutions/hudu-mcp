@@ -224,13 +224,18 @@ const RELATION_SUMMARY =
   'replacement.';
 
 /**
- * The six types the POST body documents.
+ * Deliberately not a `z.enum`.
  *
- * Enumerated rather than left as free text because the spec does name them, and
- * a typo here fails as a 422 several seconds later with no hint which of the
- * four `*able_*` fields was wrong.
+ * The spec names six types in a parenthetical (D6) and this argument used to
+ * enforce them. The live run then returned `IpAddress` on real relations
+ * (spec-defects.md F7) — a type the parenthetical omits — so the enum would
+ * have rejected a value the API demonstrably uses, and rejected it locally,
+ * before Hudu ever saw the call. An enum that is provably incomplete is worse
+ * than free text: a wrong value costs one 422 several seconds later, while a
+ * wrong enum makes a legitimate relation impossible to create at all. The
+ * documented set and the observed set are both named in the description instead.
  */
-const RELATABLE_TYPES = [
+const RELATABLE_TYPES_DOCUMENTED = [
   'Asset',
   'Website',
   'Procedure',
@@ -239,11 +244,23 @@ const RELATABLE_TYPES = [
   'Article',
 ] as const;
 
+const RELATABLE_TYPES_OBSERVED = [
+  'Article',
+  'Asset',
+  'AssetPassword',
+  'Procedure',
+  'IpAddress',
+] as const;
+
 const relatableTypeDescription = (end: 'origin' | 'destination'): string =>
-  `Kind of record at the ${end} of the link. Hudu documents six: Asset, Website, Procedure, ` +
-  'AssetPassword (a stored password record), Company and Article. The string is ' +
-  "case-sensitive and is Hudu's internal class name, not the label shown in the UI — a " +
-  'password is "AssetPassword", not "Password".';
+  `Kind of record at the ${end} of the link, as Hudu's internal class name. Two overlapping ` +
+  'sets are known and neither is closed, so this is a free-text string rather than a fixed ' +
+  `list. Documented in the API contract: ${RELATABLE_TYPES_DOCUMENTED.join(', ')}. Observed ` +
+  `live on Hudu 2.34.2: ${RELATABLE_TYPES_OBSERVED.join(', ')} — note that IpAddress is real ` +
+  'and appears in no published list, and that Website and Company are documented but were not ' +
+  'seen on that instance. The string is case-sensitive and is the class name, not the label ' +
+  'shown in the UI — a password is "AssetPassword", not "Password". List existing relations ' +
+  'with hudu_list_relations to read the exact strings your instance uses before creating one.';
 
 export const relationsSpec: ResourceSpec = {
   key: 'relations',
@@ -251,6 +268,10 @@ export const relationsSpec: ResourceSpec = {
   title: 'Relation',
   titlePlural: 'Relations',
   basePath: '/relations',
+  // GET /relations returns {relations: [...]} on Hudu 2.34.2, undocumented in
+  // the captured contract (spec-defects.md F1). There is no read-one route, so
+  // no recordKey is needed here.
+  listKey: 'relations',
   summary: RELATION_SUMMARY,
   titleField: 'name',
   listNotes:
@@ -259,18 +280,21 @@ export const relationsSpec: ResourceSpec = {
     'matching `fromable_type`/`fromable_id` (or the `toable_` pair) yourself. Expect to see ' +
     'each link twice: creating a relation also creates its mirror in the opposite direction, ' +
     'and `is_inverse: true` marks the mirror copy. Use this list to read the exact ' +
-    '`fromable_type`/`toable_type` strings your instance uses before creating one.',
+    '`fromable_type`/`toable_type` strings your instance uses before creating one — the ' +
+    'published list of types is incomplete, and a live Hudu 2.34.2 instance returned Article, ' +
+    'Asset, AssetPassword, Procedure and IpAddress, the last of which appears in no Hudu ' +
+    'documentation.',
   paginated: true,
   create: {
     bodyKey: 'relation',
     fields: {
-      fromable_type: z.enum(RELATABLE_TYPES).describe(relatableTypeDescription('origin')),
+      fromable_type: z.string().min(1).describe(relatableTypeDescription('origin')),
       fromable_id: z
         .number()
         .int()
         .positive()
         .describe('Numeric Hudu id of the origin record, of the type named in `fromable_type`.'),
-      toable_type: z.enum(RELATABLE_TYPES).describe(relatableTypeDescription('destination')),
+      toable_type: z.string().min(1).describe(relatableTypeDescription('destination')),
       toable_id: z
         .number()
         .int()
@@ -537,7 +561,11 @@ const INTEGRATION_ID_NOTE =
   '`integration_id` is required on every call here. It is the number in the address bar when ' +
   "you edit the integration in Hudu's admin UI (…/integrations/<integration_id>/edit); the API " +
   'publishes no endpoint that lists integrations, so it has to come from the user or from a ' +
-  'matcher you have already seen (`integrator_id` on the record).';
+  'matcher you have already seen (`integrator_id` on the record).\n\n' +
+  'It is required by this schema because omitting it makes Hudu answer **HTTP 500**, not 400 ' +
+  '(observed on Hudu 2.34.2). If you ever see a 500 from this endpoint, read it as a missing ' +
+  'or unusable `integration_id` rather than as an outage, and check the id before reporting ' +
+  'the instance as broken. With a valid `integration_id` the same call answers 200.';
 
 export const matchersSpec: ResourceSpec = {
   key: 'matchers',
@@ -555,17 +583,19 @@ export const matchersSpec: ResourceSpec = {
     'a `potential_company_id`. Resolve them one at a time with hudu_update_matcher.',
   paginated: true,
   filters: {
-    // Required by the API, so required in the schema: a caller who omits it gets
-    // a 404 from Hudu that reads as "no matchers exist" rather than "you left
-    // out a parameter".
+    // Required by the API, so required in the schema. Omitting it was expected
+    // to produce a 404 that reads as "no matchers exist"; the live run found
+    // that `GET /matchers` with no integration_id answers HTTP 500 instead
+    // (spec-defects.md F6), which is worse — it reads as an instance fault.
     integration_id: z
       .number()
       .int()
       .positive()
       .describe(
-        'Numeric id of the integration whose matchers you want. Required — this endpoint ' +
-          'returns nothing useful without it. Find it in the URL when editing the integration ' +
-          'in Hudu, or read `integrator_id` off a matcher you already have.',
+        'Numeric id of the integration whose matchers you want. Required — omitting it makes ' +
+          'Hudu answer 500 rather than rejecting the call as invalid, so a server error here ' +
+          'means a missing parameter and not an outage. Find it in the URL when editing the ' +
+          'integration in Hudu, or read `integrator_id` off a matcher you already have.',
       ),
     matched: z
       .boolean()

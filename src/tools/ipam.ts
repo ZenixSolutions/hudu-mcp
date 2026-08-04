@@ -11,6 +11,11 @@
  * every call returns the whole filtered collection in one response. That is
  * harmless for networks and dangerous for addresses, so the list descriptions
  * push the caller towards filtering rather than fetching.
+ *
+ * `paginated: false` is not merely tidy here, it is required: `GET /networks`
+ * with a `page` parameter answers `400 {"error":"page is not a valid filter
+ * parameter."}` on Hudu 2.34.2 (spec-defects.md F4). Sending an undocumented
+ * parameter to these endpoints fails the whole call rather than being ignored.
  */
 
 import { z } from 'zod';
@@ -34,12 +39,17 @@ const noPagingNote =
   'This endpoint documents neither `page` nor `page_size`, so there is no paging: the call ' +
   'returns everything matching your filters in a single response. If `truncated` comes back ' +
   'true the client cut records to stay inside its response budget, and because there is no ' +
-  'next page the only ways to see the rest are narrower filters or a shorter `fields` list.';
+  'next page the only ways to see the rest are narrower filters or a shorter `fields` list.\n\n' +
+  'There is no point asking for a page: Hudu rejects an undocumented query parameter outright ' +
+  'rather than ignoring it, and `GET /networks?page=1` answers 400 "page is not a valid filter ' +
+  'parameter" on 2.34.2.';
 
 const networkTypeDescription =
   'Network type, as an integer. Hudu does not publish what each number means, and the mapping ' +
   'is not derivable from the API — read an existing network on this instance with ' +
-  'hudu_list_networks to see which values are in use before setting one.';
+  'hudu_list_networks to see which values are in use before setting one. The only value ' +
+  'observed on a live Hudu 2.34.2 instance was 0, on every network; that is one instance, not ' +
+  'a published contract, so it says what is in use there rather than what is legal.';
 
 const locationIdDescription =
   'Numeric id of the Hudu location this network serves, for tenants that split a company ' +
@@ -140,26 +150,39 @@ export const networksSpec: ResourceSpec = {
 };
 
 /**
+ * Free text, and no longer a `z.enum`.
+ *
  * The status vocabulary is documented in the IpAddress schema's prose — "Must be
- * one of: unassigned, assigned, reserved, deprecated, dhcp, or slaac" — and not
- * as a JSON Schema `enum`. It is enforced on the write bodies, which is where
- * that sentence applies, and left as free text on the list filter, whose query
- * parameter the spec types as a plain string. Enforcing it on the filter too
- * would be this client legislating past the spec on an endpoint that costs
- * nothing to get wrong.
+ * one of: unassigned, assigned, reserved, deprecated, dhcp, or slaac" (D5) — and
+ * this argument used to enforce exactly those six, lower-cased. The live run
+ * found the API returning `Assigned`, `DHCP`, `Reserved` and `Unassigned`:
+ * capitalised, and in `DHCP`'s case not merely a case variant of the documented
+ * spelling (spec-defects.md F7). The enum would therefore have rejected values
+ * this API actually stores, locally, before Hudu saw them — a client refusing a
+ * legal value is a worse failure than a 422 from the server, because there is no
+ * way for the caller to get past it. Both vocabularies are named in the
+ * descriptions instead, and validation is left to Hudu, which is the only party
+ * that knows the real list.
  */
-const IP_STATUSES = ['unassigned', 'assigned', 'reserved', 'deprecated', 'dhcp', 'slaac'] as const;
+const IP_STATUSES_DOCUMENTED = 'unassigned, assigned, reserved, deprecated, dhcp, slaac';
+const IP_STATUSES_OBSERVED = 'Assigned, DHCP, Reserved, Unassigned';
 
 const statusWriteDescription =
-  'Allocation state of the address. "assigned" means a host is using it, "reserved" means it ' +
-  'is held back from allocation, "unassigned" means it is free, "deprecated" means it is on ' +
-  'its way out, and "dhcp" and "slaac" mean it is handed out dynamically rather than set on ' +
-  'the device. These six are the values Hudu documents.';
+  'Allocation state of the address, as a string. "assigned" means a host is using it, ' +
+  '"reserved" means it is held back from allocation, "unassigned" means it is free, ' +
+  '"deprecated" means it is on its way out, and "dhcp" and "slaac" mean it is handed out ' +
+  `dynamically rather than set on the device. Hudu documents these six in lower case: ` +
+  `${IP_STATUSES_DOCUMENTED}. A live Hudu 2.34.2 instance returned them CAPITALISED — ` +
+  `${IP_STATUSES_OBSERVED} — so the casing this API reads back is not the casing it ` +
+  'publishes, and neither list is enforced here. Read an existing address with ' +
+  'hudu_list_ip_addresses and match the spelling and casing that instance already uses.';
 
 const statusFilterDescription =
-  'Return only addresses in this state. Hudu documents six: "unassigned", "assigned", ' +
-  '"reserved", "deprecated", "dhcp", "slaac". The filter itself is typed as free text, so a ' +
-  'value your instance uses but Hudu has not documented will still be passed through.';
+  'Return only addresses in this state. Hudu documents six in lower case ' +
+  `(${IP_STATUSES_DOCUMENTED}); a live Hudu 2.34.2 instance stored them capitalised ` +
+  `(${IP_STATUSES_OBSERVED}). The filter is free text and is passed through verbatim, so ` +
+  'match the casing your instance returns — filtering on "assigned" where the records say ' +
+  '"Assigned" may match nothing.';
 
 const fqdnDescription =
   'Fully qualified domain name for this address, e.g. "dc01.corp.example.com". Hudu stores ' +
@@ -191,7 +214,7 @@ const ipWritableFields = {
       'One IP address, not a range — "10.20.0.14" or "2001:db8::14". A CIDR block belongs on a ' +
         'network record instead; see hudu_create_network.',
     ),
-  status: z.enum(IP_STATUSES).optional().describe(statusWriteDescription),
+  status: z.string().min(1).optional().describe(statusWriteDescription),
   fqdn: z.string().optional().describe(fqdnDescription),
   description: z.string().optional().describe('Short description of what this address is for.'),
   comments: z.string().optional().describe('Longer free-text notes about the address.'),
@@ -271,7 +294,8 @@ export const ipAddressesSpec: ResourceSpec = {
     'using it. Nothing on the network changes — the host keeps the address, Hudu simply stops ' +
     'recording it, and the range will read as free. If the address is being retired rather ' +
     'than mis-documented, prefer hudu_update_ip_address with `status: "unassigned"` so the ' +
-    'record and its history survive.',
+    'record and its history survive. Match the casing your instance uses for that value — a ' +
+    'live Hudu 2.34.2 instance stores it as "Unassigned", not "unassigned".',
 };
 
 export function ipamTools(): ToolDefinition[] {

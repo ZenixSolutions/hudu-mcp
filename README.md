@@ -245,8 +245,10 @@ The Hudu v1 API cannot answer some questions that people reasonably expect it to
 and this server reports those gaps rather than papering over them. The ones most
 likely to affect you:
 
-- **No collection endpoint returns a total count** — no envelope, no `total`, no
-  `X-Total-Count`, no `Link` header (C1). This server therefore emits neither
+- **No collection endpoint returns a total count** — no `total`, no
+  `X-Total-Count`, no `Link` header (C1). Ten collections wrap their array in a
+  single-key envelope, but that envelope carries the array and nothing else, so
+  it counts nothing either (F1). This server therefore emits neither
   `total` nor `has_more`. Read `page_was_full` and `pagination_note`, and never
   treat a full page as a complete list.
 - **Five collections have no pagination at all** — networks, IP addresses, racks,

@@ -12,6 +12,58 @@ remove tools.
 
 ### Fixed
 
+- **Six list tools returned nothing (correctness).** A contract run against a
+  live Hudu 2.34.2 instance found that `GET /companies`, `/asset_layouts`,
+  `/articles`, `/folders`, `/relations` and `/users` wrap their array in a
+  single-key envelope, which the captured API document records for none of them.
+  Those tools expected a bare array. `unwrapList` does not throw on a wrong
+  shape — it returns an empty array — so `hudu_list_companies` reported a
+  populated tenant as having no companies. Each envelope key is now declared,
+  and `unwrapList` no longer short-circuits to an empty list when a declared key
+  is missing from the body. Recorded as `docs/reference/spec-defects.md` F1.
+- **Six get tools returned the envelope instead of the record.**
+  `/companies/{id}`, `/asset_layouts/{id}`, `/articles/{id}`, `/folders/{id}`,
+  `/procedures/{id}` and `/users/{id}` wrap the record under its singular name,
+  so those tools handed back `{"company": {...}}` where a company was asked for
+  and every field lookup on the result missed (F2).
+- **A get could succeed and return nothing that said so.**
+  `GET /companies/{id}` and `GET /articles/{id}` answer HTTP 200 with an empty
+  body for an id that does not exist, which never reaches the error path. The
+  get tools returned a bare `null`, readable as "the record is empty". They now
+  return `found: false` with a notice naming the id and stating that no such
+  record exists on the instance. No 404 is fabricated — the call succeeded (F3).
+- **`401` guidance named the wrong cause.** A Hudu key that lacks a scope
+  answers `401`, not `403`: a key without password access was rejected with
+  `401` on `/asset_passwords` and `/password_folders`, and no `403` exists on
+  that instance. The guidance now names key scope alongside a bad, expired or
+  IP-blocked key, so an operator does not reissue a working key. The `403`
+  branch is kept for other Hudu versions and marked unobserved (A7, F5).
+- **`404` guidance claimed a missing record and an unrouted path were
+  indistinguishable.** On 2.34.2 they are not: a missing record names its
+  resource, an unrouted path answers a generic body. The guidance says to read
+  the body (F3).
+
+### Changed
+
+- **`ip_addresses.status` is no longer a `z.enum`.** The six lower-case values
+  came from the schema's prose; the API returns `Assigned`, `DHCP`, `Reserved`
+  and `Unassigned`. The enum would have rejected every value the API actually
+  stores, locally, before Hudu saw the call. It is now a string whose
+  description names both vocabularies (D5, F7).
+- **Relation `fromable_type`/`toable_type` are no longer a `z.enum`.** Live
+  relations carry `IpAddress`, which appears in no published list, so the enum
+  made a legitimate relation impossible to create (D6, F7).
+- **`rack_storage_items.side` and `status` take strings, not integers.** The
+  body schema types both as integers; the API stores `front`/`rear`/`both` and
+  `reserved`/`used`. Observation wins, and there was no published integer
+  mapping to send anyway (B7, D2, F7).
+- `hudu_list_matchers` now explains that omitting `integration_id` produces an
+  HTTP 500 rather than a validation error, so a 500 there is read as a missing
+  parameter and not an outage (F6).
+- Tool descriptions carrying undocumented values — IP status, relation types,
+  rack side and status, `network_type` — name what was observed on Hudu 2.34.2
+  and say plainly that it is one instance's data rather than a contract.
+
 - **Credential leak through `response_format: "markdown"` (security).** Tool
   handlers rendered their Markdown view from the raw API record, before
   `stripSecrets` ran, and the rendered string was protected only by scrubbing

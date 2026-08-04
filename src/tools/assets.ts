@@ -126,7 +126,7 @@ const assetWritableFields = {
  * parameter, which the factory does not model, so this spec is fed to
  * `buildListTool` alone.
  */
-const assetsListSpec: ResourceSpec = {
+export const assetsListSpec: ResourceSpec = {
   key: 'assets',
   singular: 'asset',
   title: 'Asset',
@@ -249,19 +249,37 @@ const getAssetTool = defineTool({
     `${WRITE_PATH_WARNING}\n\n` +
     'Layout-defined data comes back under `fields`: an array of {id, label, value, position} ' +
     'objects, one per field the layout defines. Read it here before any update, because a PUT ' +
-    'replaces the values it is given.',
+    'replaces the values it is given.\n\n' +
+    'If no such asset exists under that company this tool returns `found: false` with an ' +
+    'explanatory notice rather than a record. Read that as "no such asset here", not as an ' +
+    'asset with no values — and check `company_id` before concluding the asset is gone, ' +
+    'because an asset owned by another company is unreachable through this path.',
   inputSchema: { ...companyIdArg, ...assetIdArg, ...responseFormatArg },
   operationClass: OperationClass.Read,
   handler: async (args, { client }) => {
+    const companyId = args['company_id'] as number;
+    const id = args['id'] as number;
     const response = await client.get<unknown>(
-      buildPath(ASSET_ITEM_PATH, {
-        company_id: args['company_id'] as number,
-        id: args['id'] as number,
-      }),
+      buildPath(ASSET_ITEM_PATH, { company_id: companyId, id }),
     );
     const record = unwrapRecord(response.data, 'asset');
+
+    // Some Hudu endpoints answer 200 with an empty body for an id that does not
+    // exist (spec-defects.md F3), which never reaches the error path. Returning
+    // a bare null there invites a model to read it as an empty record.
+    if (record === undefined) {
+      return {
+        data: { found: false, resource: 'assets', id, company_id: companyId, record: null },
+        notice:
+          `No asset with id ${id} exists under company ${companyId}. The request succeeded and ` +
+          'returned no record, so this is an answer rather than a failure — do not retry it. ' +
+          'The asset may belong to a different company: hudu_list_assets with `id` set returns ' +
+          'the owning `company_id` when the asset exists anywhere on the instance.',
+      };
+    }
+
     return {
-      data: record ?? null,
+      data: record,
       markdown:
         args['response_format'] === ResponseFormat.Markdown
           ? (data): string => renderRecordMarkdown('Asset', data)
@@ -477,12 +495,17 @@ const layoutWritableFields = {
  * guessing wrong would rewrite the field definitions of every asset on the
  * layout. Reported as a spec defect rather than resolved by assumption.
  */
-const assetLayoutsSpec: ResourceSpec = {
+export const assetLayoutsSpec: ResourceSpec = {
   key: 'asset_layouts',
   singular: 'asset_layout',
   title: 'Asset Layout',
   titlePlural: 'Asset Layouts',
   basePath: '/asset_layouts',
+  // Undocumented envelopes, measured on Hudu 2.34.2 (spec-defects.md F1, F2).
+  // The list envelope also settles B1: the endpoint returns a wrapped array,
+  // not the single object its 200 response is documented as.
+  listKey: 'asset_layouts',
+  recordKey: 'asset_layout',
   summary:
     'An asset layout is the template behind an asset type: its icon and colour, whether its ' +
     'assets can hold passwords, photos, comments and files, and the set of custom fields every ' +

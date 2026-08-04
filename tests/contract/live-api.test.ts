@@ -33,7 +33,7 @@
 import { describe, expect, it, type TestContext } from 'vitest';
 
 import { HuduClient } from '../../src/api/client.js';
-import { unwrapList } from '../../src/api/envelope.js';
+import { unwrapList, unwrapRecord } from '../../src/api/envelope.js';
 import { errorFromResponse } from '../../src/api/errors.js';
 import { buildPath, buildUrl, type QueryValue } from '../../src/api/paths.js';
 import { loadConfig, MAX_PAGE_SIZE, normaliseBaseUrl } from '../../src/config.js';
@@ -183,7 +183,13 @@ interface ListEndpoint {
   readonly paginated: boolean;
   /** False only for `/asset_layouts`, which documents `page` and no `page_size` (C3). */
   readonly pageSizeSupported?: boolean;
-  /** `GET /asset_layouts` is documented as returning one bare object (B1). */
+  /**
+   * Accept a single bare object where a list was expected, as `unwrapList`
+   * does. Set for no endpoint since the live run settled B1: `/asset_layouts`
+   * returns `{asset_layouts: [...]}`, not the single object the contract
+   * documents. Kept because the tolerance in `unwrapList` is still real and the
+   * next endpoint to contradict its own schema will need it.
+   */
   readonly allowSingleObject?: boolean;
   /** Records to ask for. Lower for endpoints whose records carry secrets. */
   readonly probePageSize?: number;
@@ -199,13 +205,21 @@ interface ListEndpoint {
  * with them by construction and could never catch a wrong `listKey`.
  */
 const LIST_ENDPOINTS: readonly ListEndpoint[] = [
-  { path: '/companies', paginated: true, declaredIn: 'src/tools/companies.ts' },
+  {
+    path: '/companies',
+    listKey: 'companies',
+    paginated: true,
+    declaredIn: 'src/tools/companies.ts',
+  },
   { path: '/assets', listKey: 'assets', paginated: true, declaredIn: 'src/tools/assets.ts' },
   {
     path: '/asset_layouts',
+    // B1 predicted a single bare object here. The live run found
+    // `{asset_layouts: [...]}` instead (spec-defects.md F1), so the envelope is
+    // declared and `allowSingleObject` no longer describes this endpoint.
+    listKey: 'asset_layouts',
     paginated: true,
     pageSizeSupported: false,
-    allowSingleObject: true,
     declaredIn: 'src/tools/assets.ts',
   },
   // page_size 1: these records carry `password` and `otp_secret` (A1), so the
@@ -218,8 +232,8 @@ const LIST_ENDPOINTS: readonly ListEndpoint[] = [
     declaredIn: 'src/tools/passwords.ts',
   },
   { path: '/password_folders', paginated: true, declaredIn: 'src/tools/passwords.ts' },
-  { path: '/articles', paginated: true, declaredIn: 'src/tools/content.ts' },
-  { path: '/folders', paginated: true, declaredIn: 'src/tools/content.ts' },
+  { path: '/articles', listKey: 'articles', paginated: true, declaredIn: 'src/tools/content.ts' },
+  { path: '/folders', listKey: 'folders', paginated: true, declaredIn: 'src/tools/content.ts' },
   {
     path: '/procedures',
     listKey: 'procedures',
@@ -227,7 +241,12 @@ const LIST_ENDPOINTS: readonly ListEndpoint[] = [
     declaredIn: 'src/tools/content.ts',
   },
   { path: '/websites', paginated: true, declaredIn: 'src/tools/monitoring.ts' },
-  { path: '/relations', paginated: true, declaredIn: 'src/tools/monitoring.ts' },
+  {
+    path: '/relations',
+    listKey: 'relations',
+    paginated: true,
+    declaredIn: 'src/tools/monitoring.ts',
+  },
   { path: '/magic_dash', paginated: true, declaredIn: 'src/tools/monitoring.ts' },
   {
     path: '/matchers',
@@ -235,7 +254,7 @@ const LIST_ENDPOINTS: readonly ListEndpoint[] = [
     paginated: true,
     declaredIn: 'src/tools/monitoring.ts',
   },
-  { path: '/users', paginated: true, declaredIn: 'src/tools/admin.ts' },
+  { path: '/users', listKey: 'users', paginated: true, declaredIn: 'src/tools/admin.ts' },
   { path: '/activity_logs', paginated: true, declaredIn: 'src/tools/admin.ts' },
   { path: '/expirations', paginated: true, declaredIn: 'src/tools/admin.ts' },
   {
@@ -279,7 +298,7 @@ describe.skipIf(!enabled)('live Hudu contract', () => {
     expect(Object.keys(response.data), DRIFT).toContain('version');
   });
 
-  it('GET /companies returns a bare array, with no total and no envelope', async () => {
+  it('GET /companies wraps its array under "companies", with no total', async () => {
     const response = await client().get<unknown>(buildPath('/companies'), {
       page: 1,
       page_size: 5,
@@ -287,11 +306,23 @@ describe.skipIf(!enabled)('live Hudu contract', () => {
 
     expect(response.status, DRIFT).toBe(200);
 
-    // C1: no collection endpoint returns a total count. `page_was_full` is the
-    // only honest signal this server can emit, and that depends on this shape.
-    expect(Array.isArray(response.data), DRIFT).toBe(true);
+    // Corrected from "returns a bare array". The captured contract documents no
+    // envelope here and this test asserted a bare array on that basis; the live
+    // run found `{companies: [...]}` (spec-defects.md F1), so the old assertion
+    // was testing the document rather than the endpoint. `hudu_list_companies`
+    // now declares the envelope, and this is what it depends on.
+    expect(
+      isRecord(response.data) && Array.isArray(response.data['companies']),
+      `Envelope drift on GET /companies: src/tools/companies.ts declares listKey "companies" ` +
+        `from a live observation on Hudu 2.34.2. This instance returned ${shapeOf(response.data)}. ` +
+        DRIFT,
+    ).toBe(true);
 
-    const items = unwrapList<Record<string, unknown>>(response.data, undefined, 'GET /companies');
+    // C1: no collection endpoint returns a total count. `page_was_full` is the
+    // only honest signal this server can emit.
+    expect(topLevelKeys(response.data), DRIFT).not.toContain('total');
+
+    const items = unwrapList<Record<string, unknown>>(response.data, 'companies', 'GET /companies');
     expect(items.length, DRIFT).toBeLessThanOrEqual(5);
     if (items.length > 0) {
       expect(Object.keys(items[0]!), DRIFT).toContain('id');
@@ -305,21 +336,28 @@ describe.skipIf(!enabled)('live Hudu contract', () => {
       page_size: 1,
     });
 
-    const items = unwrapList<unknown>(response.data, undefined, 'GET /companies');
+    const items = unwrapList<unknown>(response.data, 'companies', 'GET /companies');
     expect(items.length, DRIFT).toBeLessThanOrEqual(1);
   });
 
-  it('GET /asset_layouts really does return a list, despite documenting one object (B1)', async () => {
-    // The published schema says the 200 response is a single Asset_Layout.
-    // `unwrapList` absorbs both shapes; if the endpoint ever settles on one,
-    // this is where that shows up.
+  it('GET /asset_layouts returns a wrapped list, not the one object it documents (B1)', async () => {
+    // The published schema says the 200 response is a single Asset_Layout. The
+    // live run found `{asset_layouts: [...]}` (spec-defects.md F1), which is
+    // what the tool now declares. `unwrapList` still absorbs the single-object
+    // form, so a return to the documented shape would not break the tool — but
+    // it would break this assertion, which is the point of testing it here.
     const response = await client().get<unknown>(buildPath('/asset_layouts'), { page: 1 });
 
     expect(response.status, DRIFT).toBe(200);
+    expect(
+      isRecord(response.data) && Array.isArray(response.data['asset_layouts']),
+      `Envelope drift on GET /asset_layouts: src/tools/assets.ts declares listKey ` +
+        `"asset_layouts". This instance returned ${shapeOf(response.data)}. ${DRIFT}`,
+    ).toBe(true);
 
     const items = unwrapList<Record<string, unknown>>(
       response.data,
-      undefined,
+      'asset_layouts',
       'GET /asset_layouts',
     );
     expect(Array.isArray(items), DRIFT).toBe(true);
@@ -335,7 +373,10 @@ describe.skipIf(!enabled)('live Hudu contract', () => {
     const response = await client().get<unknown>(buildPath('/asset_layouts'));
 
     expect(response.status, DRIFT).toBe(200);
-    expect(() => unwrapList(response.data, undefined, 'GET /asset_layouts'), DRIFT).not.toThrow();
+    expect(
+      () => unwrapList(response.data, 'asset_layouts', 'GET /asset_layouts'),
+      DRIFT,
+    ).not.toThrow();
   });
 
   it('authenticates with x-api-key alone', async () => {
@@ -888,41 +929,78 @@ const messageOf = (response: RawResponse): string | undefined => {
   return undefined;
 };
 
-describe.skipIf(!enabled)('404 means both "no such record" and "no such endpoint"', () => {
-  it('a missing record and an unrouted path are indistinguishable', async () => {
+/**
+ * Rewritten after the live run. This block previously asserted that
+ * `GET /companies/{implausible id}` answers 404 and that a missing record is
+ * indistinguishable from an unrouted path — both derived from the contract, and
+ * both contradicted on Hudu 2.34.2 (spec-defects.md F3). `/companies/{id}` and
+ * `/articles/{id}` answer **HTTP 200 with a body of `null`**; `/networks/{id}`
+ * and `/users/{id}` answer 404 with a resource-specific message; and an
+ * unrouted path answers 404 with a different body shape again. The old
+ * assertions tested the document, so they are replaced rather than kept.
+ */
+describe.skipIf(!enabled)('F3: "no such record" is not one behaviour', () => {
+  it('GET /companies/{missing id} answers 200 with no record, not 404', async () => {
     const missingRecord = await probe(`/companies/${IMPLAUSIBLE_ID}`);
-    const unroutedPath = await probe(UNROUTED_PATH);
-
-    const both = `missing record: ${notFoundSignature(missingRecord)}; unrouted path: ${notFoundSignature(unroutedPath)}`;
 
     expect(
       missingRecord.status,
-      `GET /companies/${IMPLAUSIBLE_ID} answered HTTP ${missingRecord.status} rather than 404. ` +
-        DRIFT,
-    ).toBe(404);
+      `F3: GET /companies/${IMPLAUSIBLE_ID} answered HTTP ${missingRecord.status}. On Hudu ` +
+        '2.34.2 it answers 200 with an empty body, which is why buildGetTool in ' +
+        'src/tools/resource.ts reports `found: false` from a *successful* call rather than ' +
+        'relying on the error path. If this endpoint now 404s, that branch is no longer ' +
+        'reachable here — check whether any endpoint still answers 200, and if none does, ' +
+        `simplify it. ${DRIFT}`,
+    ).toBe(200);
+
+    expect(
+      unwrapRecord(missingRecord.body, 'company'),
+      `F3: GET /companies/${IMPLAUSIBLE_ID} answered 200 and carried a record. Either this ` +
+        'tenant really has that id, or a missing company now returns something. ' +
+        `Observed ${shapeOf(missingRecord.body)}.`,
+    ).toBeUndefined();
+  });
+
+  it('an unrouted path answers 404 with a generic body', async () => {
+    const unroutedPath = await probe(UNROUTED_PATH);
 
     expect(
       unroutedPath.status,
-      `GET ${UNROUTED_PATH} answered HTTP ${unroutedPath.status} rather than 404. If an ` +
-        'unrouted path now answers with something else, the two cases have become ' +
-        `distinguishable — see the assertion below. ${DRIFT}`,
+      `GET ${UNROUTED_PATH} answered HTTP ${unroutedPath.status} rather than 404. ${DRIFT}`,
     ).toBe(404);
 
-    // The claim under test, stated by every hudu_get_* description and by the
-    // 404 guidance in src/api/errors.ts: these two cannot be told apart, which
-    // is why the guidance has to name both causes.
-    const sameShape = notFoundSignature(missingRecord) === notFoundSignature(unroutedPath);
-    const sameMessage = messageOf(missingRecord) === messageOf(unroutedPath);
+    expect(
+      topLevelKeys(unroutedPath.body),
+      `F3: an unrouted path answered ${notFoundSignature(unroutedPath)}. It was observed as ` +
+        '{"status":404,"error":"Not Found"} on 2.34.2, which is what distinguishes it from a ' +
+        'resource-specific "X not found". If the shape has changed, re-check the 404 guidance ' +
+        `in src/api/errors.ts. ${DRIFT}`,
+    ).toContain('error');
+  });
+
+  it('a 404 for a missing record names the resource, unlike an unrouted path', async () => {
+    // `/networks/{id}` is the 404 half of F3: it answers `{"error":"Network not
+    // found"}` where the unrouted path answers `{"status":404,"error":"Not
+    // Found"}`. The two are therefore *distinguishable*, which the previous
+    // version of this test asserted they were not.
+    const missingNetwork = await probe(`/networks/${IMPLAUSIBLE_ID}`);
+    const unroutedPath = await probe(UNROUTED_PATH);
 
     expect(
-      sameShape && sameMessage,
-      'A missing record and an unrouted path are now distinguishable on this instance ' +
-        `(${both}; message strings ${sameMessage ? 'match' : 'differ'}). Every hudu_get_* ` +
-        'description says "Hudu answers 404 identically for a missing record and an unrouted ' +
-        'path", and the 404 guidance in src/api/errors.ts hedges between both causes on that ' +
-        'basis. If they can be told apart, both should say which is which instead — that is a ' +
-        'better error for an agent, and this test failing is good news.',
-    ).toBe(true);
+      missingNetwork.status,
+      `F3: GET /networks/${IMPLAUSIBLE_ID} answered HTTP ${missingNetwork.status} rather than ` +
+        `404. ${DRIFT}`,
+    ).toBe(404);
+
+    const both = `missing record: ${notFoundSignature(missingNetwork)}; unrouted path: ${notFoundSignature(unroutedPath)}`;
+
+    expect(
+      messageOf(missingNetwork) === messageOf(unroutedPath),
+      `F3: a missing network and an unrouted path now carry the same message (${both}). They ` +
+        'were distinguishable on 2.34.2, and the 404 guidance in src/api/errors.ts tells an ' +
+        'operator to read the body to tell them apart. If that no longer works, the guidance ' +
+        'has to go back to hedging between both causes.',
+    ).toBe(false);
   });
 });
 

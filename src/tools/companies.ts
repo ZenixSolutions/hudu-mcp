@@ -49,6 +49,11 @@ export const companiesSpec: ResourceSpec = {
   title: 'Company',
   titlePlural: 'Companies',
   basePath: '/companies',
+  // Both envelopes are undocumented and were measured on Hudu 2.34.2:
+  // GET /companies returns {companies: [...]} and GET /companies/{id} returns
+  // {company: {...}} (spec-defects.md F1, F2).
+  listKey: 'companies',
+  recordKey: 'company',
   summary:
     'A company is the top-level container in Hudu; every asset, article, password and website ' +
     'belongs to exactly one.',

@@ -74,6 +74,9 @@ export const usersSpec: ResourceSpec = {
   title: 'User',
   titlePlural: 'Users',
   basePath: '/users',
+  // Undocumented envelopes, measured on Hudu 2.34.2 (spec-defects.md F1, F2).
+  listKey: 'users',
+  recordKey: 'user',
   summary:
     'A user is a person with access to Hudu: either a member of your own team, or a portal ' +
     'member belonging to one client company.',
