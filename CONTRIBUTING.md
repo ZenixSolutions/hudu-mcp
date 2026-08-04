@@ -51,14 +51,26 @@ Be clear-eyed about this. CI is a machine check; the rest is a human agreement.
 | Changelog completeness at release                            | CI (`.github/workflows/release.yml`), on `v*` tags only      |
 | Issue exists, discovery done, RFC written, approval obtained | Convention. Nothing blocks a pull request that skips them.   |
 | Tests and documentation accompany the change                 | Convention, checked in review                                |
-| Independent (non-author) review                              | **Not currently enforced.** See below.                       |
+| Independent (non-author) review                              | Branch protection, with an admin exemption. See below.       |
 | Merge approval                                               | Convention                                                   |
 
-**Independent review is not enforced by branch protection today.** Branch
-protection is a repository setting that only the repository owner can apply, and
-it has not been applied. Until it is, a maintainer with write access can merge
-their own unreviewed change. This is an open item, tracked as such; do not read
-the review step above as a technical control.
+**Independent review is enforced for contributors, with a deliberate admin
+exemption.** `main` requires the three CI checks to pass, one approving review,
+resolved conversations, and linear history, and it forbids force-pushes and
+deletion. But `enforce_admins` is off, so a repository administrator can merge
+without the approval.
+
+That exemption is not an oversight. GitHub does not permit approving your own
+pull request, so on a repository with a single maintainer a hard approval rule
+does not produce review — it produces a stuck queue, and then either a second
+account rubber-stamping the same person's work or the rule being switched off
+under pressure. The exemption keeps the gate real for every contributor while
+leaving the maintainer a bypass they have to choose, and each bypass is recorded
+in the pull request timeline.
+
+What this means in practice: if you are not an administrator, the review
+requirement is a technical control and you cannot route around it. If you are,
+it is a decision you are making, and Article VI still applies to you.
 
 The credential scan looks for a fixed set of patterns — private key blocks,
 provider-issued token formats, and assignments to `HUDU_API_KEY` that look like

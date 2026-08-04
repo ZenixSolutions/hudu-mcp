@@ -465,10 +465,13 @@ scan. Semantic versioning, `vX.Y.Z` tags, Keep a Changelog format with a
 signals that the tool surface may still move.
 
 `CONTRIBUTING.md` carries a table of what CI enforces and what is only
-convention, and states in bold that **independent review is not enforced by
-branch protection today** because branch protection has not been applied.
-Claiming a control that does not exist is worse than having no control, and
-Article XIV's demand for objective evidence cuts both ways.
+convention. Branch protection on `main` was applied after the initial commit:
+the three CI checks, one approving review, dismissal of stale reviews, resolved
+conversations, linear history, and no force-pushes or deletion — with
+`enforce_admins` deliberately off. The exemption and its reasoning are recorded
+in Open Question 1 rather than presented as full enforcement. Claiming a control
+that does not exist is worse than having no control, and Article XIV's demand
+for objective evidence cuts both ways.
 
 ### D8 — Licensing and identity
 
@@ -725,12 +728,22 @@ with the validation method named, rather than as a completion claim.
 
 Owner input needed. The rest of this document is a record; these are live.
 
-1. **Branch protection.** Independent review is unenforced today: a maintainer
-   with write access can merge their own unreviewed change. Only the repository
-   owner can apply branch protection. Given that independent review is what
-   caught all three security defects in this build, this is the highest-value
-   unresolved item in the repository. Apply it requiring CI plus one non-author
-   approval?
+1. **The admin exemption on branch protection.** _Partially resolved._ `main`
+   now requires the three CI checks, one approving review, resolved
+   conversations and linear history, and forbids force-pushes and deletion. But
+   `enforce_admins` is off, because GitHub does not permit self-approval and a
+   hard rule on a single-maintainer repository yields either a stuck queue, a
+   second account rubber-stamping the same person's work, or the rule being
+   disabled under pressure — none of which is review.
+
+   So the control is real for contributors and advisory for administrators. The
+   substance of Article VI was met in this build by adversarial review agents
+   with no stake in the code being correct, which is what found all four
+   security defects; the checkbox was not the thing doing the work. **Owner
+   decision needed:** accept the exemption as standing policy, or close it once
+   a second reviewer with write access exists — which is the point at which the
+   exemption stops costing nothing.
+
 2. **npm publication.** Publish as `@zenixsolutions/hudu-mcp` (clear provenance,
    weaker discoverability) or not publish to npm at all for 0.1.0 and distribute
    from the repository while the surface settles? Note that publishing is also
