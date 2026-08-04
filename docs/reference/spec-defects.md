@@ -22,13 +22,19 @@ observation wins. Items corrected by that run say so in place and point at F.
 
 ## A. Security-relevant
 
-**A1. Stored secrets are returned in list responses.**
+**A1. Stored secrets are returned in list responses. Confirmed live.**
 `Asset_Password` lists `password` ("The actual password string") and
 `otp_secret` ("Secret key for one-time passwords") among its **required**
 properties, and `GET /asset_passwords` returns an array of that model. A single
 unfiltered call therefore returns every credential and every TOTP seed visible
 to the key. This is the single most consequential fact about the Hudu API and
 drives the whole design of `src/security/secrets.ts`.
+
+> **Confirmed by observation.** A live `GET /asset_passwords` on 2.34.2 returned
+> records carrying both `password` and `otp_secret` populated. This is not a
+> documentation artefact or a field that happens to be null in practice: the
+> secrets are really there, in the list, on the first page, for any key with
+> password access.
 
 **A2. `DELETE /activity_logs` destroys the audit trail with no id.**
 It takes a required `datetime` query parameter and deletes everything from that
@@ -294,14 +300,16 @@ in any interpretation and is presumably a `YYYY-DD-MM` mix-up upstream. Nothing
 in this server parses it, and nothing should start: report it verbatim.
 `hudu_get_api_info` passes both fields through unchanged.
 
-**Scope of the run.** The key used had **password access disabled**, so
-`/asset_passwords` and `/password_folders` answered `401` and their response
-shapes were **not** observed. Every claim about those two endpoints in this
-document is still document-derived. `/expirations`, `/uploads`, `/websites`,
+**Scope of the run.** The first pass used a key with **password access
+disabled**, so `/asset_passwords` and `/password_folders` answered `401` and
+their shapes went unobserved. A second pass with a password-scoped key closed
+that gap: both wrap, and both are recorded below. Nothing on the security-
+critical surface is now document-derived. The password-scoped key was used for
+that one check and then destroyed. `/expirations`, `/uploads`, `/websites`,
 `/magic_dash`, `/activity_logs`, `/ip_addresses`, `/rack_storages` and
 `/rack_storage_items` returned bare arrays, matching what the code assumed.
 
-### F1. Eleven list endpoints wrap their array; six were undeclared here
+### F1. Thirteen list endpoints wrap their array; eight were undeclared here
 
 The "documented?" column is about Hudu's OpenAPI file; the "declared?" column
 is about this client. They are different questions and the first version of this
@@ -352,15 +360,21 @@ client more brittle than it was.
 No envelope carries anything besides the array — no `total`, `meta` or
 `pagination` sibling — so C1's consequence is unaffected.
 
-### F2. Seven single-record endpoints wrap the record
+### F2. Nine single-record endpoints wrap the record
 
 `/companies/{id}` → `company` · `/companies/{company_id}/assets/{id}` → `asset`
 (already correct) · `/asset_layouts/{id}` → `asset_layout` · `/articles/{id}` →
 `article` · `/folders/{id}` → `folder` · `/procedures/{id}` → `procedure` ·
-`/users/{id}` → `user`
+`/users/{id}` → `user` · `/asset_passwords/{id}` → `asset_password` ·
+`/password_folders/{id}` → `password_folder`
 
-`unwrapRecord` with no `recordKey` returns the body unchanged, so six get-tools
-handed back `{"company": {...}}` where a company was asked for. Quieter than F1
+The last two were measured in the second pass, with a password-scoped key. They
+matter more than the rest: `hudu_reveal_password` was reading the record without
+a key, so the one tool whose entire purpose is to return a specific credential
+was returning an object containing one.
+
+`unwrapRecord` with no `recordKey` returns the body unchanged, so eight
+get-tools handed back `{"company": {...}}` where a company was asked for. Quieter than F1
 and just as wrong: every field lookup on the result misses. Each key is now
 declared. `unwrapRecord` also treats a declared key whose value is `null` as
 "no record" rather than returning the wrapper — see F3.

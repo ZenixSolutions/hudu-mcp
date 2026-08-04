@@ -426,3 +426,62 @@ describe('hudu_reveal_password registration', () => {
     expect(Object.keys(revealing[0]!.inputSchema)).not.toContain('ids');
   });
 });
+
+describe('the shape Hudu actually returns, not the shape it documents', () => {
+  // Everything above this block feeds the tools a bare array and a bare record,
+  // because that is what the captured contract describes. A second key with
+  // password access showed the live API wraps both — `{asset_passwords: [...]}`
+  // and `{asset_password: {...}}` — so these repeat the guarantees against the
+  // shape that will actually arrive. A control verified only against a shape
+  // that never occurs is not verified.
+
+  it('strips secrets from the wrapped list response', async () => {
+    const server = testServer({
+      json: {
+        asset_passwords: [assetPasswordFixture(1), assetPasswordFixture(2)],
+      },
+    });
+
+    const response = await server.call('hudu_list_passwords', {});
+
+    expectNoSecrets(response);
+    // Proves the records were actually read, so the assertion above is not
+    // passing merely because the list came back empty.
+    expect(toolText(response)).toContain('Firewall admin');
+  });
+
+  it('strips secrets from the wrapped single record', async () => {
+    const server = testServer({ json: { asset_password: assetPasswordFixture(7) } });
+
+    const response = await server.call('hudu_get_password', { id: 7 });
+
+    expectNoSecrets(response);
+    expect(response.structuredContent?.['name']).toBe('Firewall admin');
+  });
+
+  it('reveals from the wrapped record rather than handing back the wrapper', async () => {
+    const server = testServer(
+      { json: { asset_password: assetPasswordFixture(7) } },
+      { allowPasswordReveal: true },
+    );
+
+    const response = await server.call('hudu_reveal_password', { id: 7, confirm: true });
+
+    // Revealing is this tool's whole job, so the secret is expected here.
+    expect(toolText(response)).toContain(SECRET_PASSWORD_VALUE);
+    // And the caller gets the credential, not an object containing one.
+    expect(response.structuredContent?.['name']).toBe('Firewall admin');
+    expect(response.structuredContent?.['asset_password']).toBeUndefined();
+  });
+
+  it('still withholds from the wrapped record when reveal is disabled', async () => {
+    const server = testServer({ json: { asset_password: assetPasswordFixture(7) } });
+
+    const response = await server.call('hudu_get_password', {
+      id: 7,
+      response_format: 'markdown',
+    });
+
+    expectNoSecrets(response);
+  });
+});

@@ -19,6 +19,7 @@ import { unwrapList, unwrapRecord } from '../../src/api/envelope.js';
 import { errorFromResponse } from '../../src/api/errors.js';
 import { assetLayoutsSpec, assetsListSpec } from '../../src/tools/assets.js';
 import { companiesSpec } from '../../src/tools/companies.js';
+import { assetPasswordsSpec, passwordFoldersSpec } from '../../src/tools/passwords.js';
 import { articlesSpec, foldersSpec, proceduresSpec } from '../../src/tools/content.js';
 import { usersSpec } from '../../src/tools/admin.js';
 import { matchersSpec, relationsSpec } from '../../src/tools/monitoring.js';
@@ -52,6 +53,11 @@ const WRAPPED_LISTS: readonly {
   { tool: 'hudu_list_procedures', key: 'procedures' },
   { tool: 'hudu_list_public_photos', key: 'public_photos' },
   { tool: 'hudu_list_matchers', key: 'matchers', args: { integration_id: 5 } },
+  // Verified late, with a second key that had password access. Until then this
+  // was the one collection on the security-critical surface whose shape was
+  // still document-derived rather than measured.
+  { tool: 'hudu_list_passwords', key: 'asset_passwords' },
+  { tool: 'hudu_list_password_folders', key: 'password_folders' },
 ];
 
 describe('F1: wrapped list responses unwrap to records, not to an empty list', () => {
@@ -93,6 +99,8 @@ const SPECS_WITH_LIST_KEY: readonly (readonly [ResourceSpec, string])[] = [
   [assetsListSpec, 'assets'],
   [proceduresSpec, 'procedures'],
   [matchersSpec, 'matchers'],
+  [assetPasswordsSpec, 'asset_passwords'],
+  [passwordFoldersSpec, 'password_folders'],
 ];
 
 describe('F1: each ResourceSpec declares the envelope key that was observed', () => {
@@ -140,6 +148,8 @@ const WRAPPED_RECORDS: readonly {
   { tool: 'hudu_get_folder', key: 'folder', args: { id: 1 } },
   { tool: 'hudu_get_procedure', key: 'procedure', args: { id: 1 } },
   { tool: 'hudu_get_user', key: 'user', args: { id: 1 } },
+  { tool: 'hudu_get_password', key: 'asset_password', args: { id: 1 } },
+  { tool: 'hudu_get_password_folder', key: 'password_folder', args: { id: 1 } },
 ];
 
 describe('F2: wrapped single records unwrap to the record, not to the wrapper', () => {

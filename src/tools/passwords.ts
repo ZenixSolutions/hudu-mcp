@@ -111,6 +111,10 @@ export const assetPasswordsSpec: ResourceSpec = {
   title: 'Password',
   titlePlural: 'Passwords',
   basePath: '/asset_passwords',
+  // Measured on 2.34.2 (spec-defects F1/F2). The captured contract documents a
+  // bare array and a bare record for both of these; the API wraps both.
+  listKey: 'asset_passwords',
+  recordKey: 'asset_password',
   summary:
     'A password record in Hudu — the credential vault entry for a company, optionally attached ' +
     'to a specific asset or website. Hudu calls these "AssetPassword" in the API and simply ' +
@@ -162,6 +166,8 @@ export const passwordFoldersSpec: ResourceSpec = {
   title: 'Password Folder',
   titlePlural: 'Password Folders',
   basePath: '/password_folders',
+  listKey: 'password_folders',
+  recordKey: 'password_folder',
   summary:
     'A folder that groups password records within a company. Folders in Hudu can also carry ' +
     'their own access restrictions, so which folder a credential sits in affects who can see it.',
@@ -227,8 +233,11 @@ const revealTool = defineTool({
   impact: 'Returns a stored credential and any OTP seed in clear text.',
   handler: async (args, { client }) => {
     const id = args['id'] as number;
+    // 'asset_password', not undefined: the single fetch wraps the record, and
+    // handing the wrapper back would make the reveal tool answer a question
+    // about a credential with an object containing one.
     const response = await client.get<unknown>(buildPath('/asset_passwords/{id}', { id }));
-    const record = unwrapRecord(response.data, undefined);
+    const record = unwrapRecord(response.data, 'asset_password');
 
     if (record === undefined) {
       // A 200 with no record is a real Hudu answer, not an error path
