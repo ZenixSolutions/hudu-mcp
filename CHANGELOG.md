@@ -10,92 +10,6 @@ remove tools.
 
 ## [Unreleased]
 
-### Fixed
-
-- **Six list endpoints wrap their array (robustness).** A contract run against
-  a live Hudu 2.34.2 instance found that `GET /companies`, `/asset_layouts`,
-  `/articles`, `/folders`, `/relations` and `/users` wrap their array in a
-  single-key envelope, which the captured API document records for none of them.
-  Those tools declared no `listKey`. They still worked: `unwrapList` falls back
-  to the sole array-valued property of an object body, and each of the six
-  responses was measured and carries exactly one. Each key is now declared
-  anyway, because the fallback holds only while that stays true — one added
-  sibling array makes the shape genuinely ambiguous and the call fails.
-  `unwrapList` also no longer short-circuits to an empty list when a declared
-  key is missing from the body. Recorded as `docs/reference/spec-defects.md` F1,
-  which also records that an earlier draft of this entry claimed these tools
-  returned nothing. They did not, and the claim was made without measuring.
-- **Six get tools returned the envelope instead of the record.**
-  `/companies/{id}`, `/asset_layouts/{id}`, `/articles/{id}`, `/folders/{id}`,
-  `/procedures/{id}` and `/users/{id}` wrap the record under its singular name,
-  so those tools handed back `{"company": {...}}` where a company was asked for
-  and every field lookup on the result missed (F2).
-- **A get could succeed and return nothing that said so.**
-  `GET /companies/{id}` and `GET /articles/{id}` answer HTTP 200 with an empty
-  body for an id that does not exist, which never reaches the error path. The
-  get tools returned a bare `null`, readable as "the record is empty". They now
-  return `found: false` with a notice naming the id and stating that no such
-  record exists on the instance. No 404 is fabricated — the call succeeded (F3).
-- **`401` guidance named the wrong cause.** A Hudu key that lacks a scope
-  answers `401`, not `403`: a key without password access was rejected with
-  `401` on `/asset_passwords` and `/password_folders`, and no `403` exists on
-  that instance. The guidance now names key scope alongside a bad, expired or
-  IP-blocked key, so an operator does not reissue a working key. The `403`
-  branch is kept for other Hudu versions and marked unobserved (A7, F5).
-- **`404` guidance claimed a missing record and an unrouted path were
-  indistinguishable.** On 2.34.2 they are not: a missing record names its
-  resource, an unrouted path answers a generic body. The guidance says to read
-  the body (F3).
-
-### Changed
-
-- **`ip_addresses.status` is no longer a `z.enum`.** The six lower-case values
-  came from the schema's prose; the API returns `Assigned`, `DHCP`, `Reserved`
-  and `Unassigned`. The enum would have rejected every value the API actually
-  stores, locally, before Hudu saw the call. It is now a string whose
-  description names both vocabularies (D5, F7).
-- **Relation `fromable_type`/`toable_type` are no longer a `z.enum`.** Live
-  relations carry `IpAddress`, which appears in no published list, so the enum
-  made a legitimate relation impossible to create (D6, F7).
-- **`rack_storage_items.side` and `status` take strings, not integers.** The
-  body schema types both as integers; the API stores `front`/`rear`/`both` and
-  `reserved`/`used`. Observation wins, and there was no published integer
-  mapping to send anyway (B7, D2, F7).
-- `hudu_list_matchers` now explains that omitting `integration_id` produces an
-  HTTP 500 rather than a validation error, so a 500 there is read as a missing
-  parameter and not an outage (F6).
-- Tool descriptions carrying undocumented values — IP status, relation types,
-  rack side and status, `network_type` — name what was observed on Hudu 2.34.2
-  and say plainly that it is one instance's data rather than a contract.
-
-- **Credential leak through `response_format: "markdown"` (security).** Tool
-  handlers rendered their Markdown view from the raw API record, before
-  `stripSecrets` ran, and the rendered string was protected only by scrubbing
-  the literal secret value out of it afterwards. That scrub could not match a
-  secret the renderer had reshaped: a `password` nested inside another object is
-  rendered via `JSON.stringify`, so any value containing a quote, a backslash or
-  a newline appeared in escaped form, and any value crossing the 300-character
-  display cut appeared as an unmatchable prefix. Either case returned real
-  credential material with `HUDU_ALLOW_PASSWORD_REVEAL` unset. Markdown is now
-  rendered by a callback that `executeTool` invokes on the already-stripped,
-  already-budgeted payload; the by-value scrub is kept behind it.
-- Markdown output is now derived from the character-budgeted payload, so it can
-  no longer exceed the response budget or disagree with `structuredContent`.
-- `notice` is scrubbed by value like the rest of a tool result. It is prepended
-  to the model-visible text and no strip walked it.
-- Upstream error bodies are redacted before being summarised into an error
-  message. The error path never runs `stripSecrets`, so a 4xx or 5xx echoing the
-  submitted attributes could carry `password` or `otp_secret` into the
-  transcript.
-- `--list-tools` named the wrong gate for tools withheld under `HUDU_READ_ONLY`.
-  `hudu_reveal_password` is classed `Read`, so read-only never withholds it, yet
-  it was reported as withheld by `HUDU_READ_ONLY` instead of by
-  `HUDU_ALLOW_PASSWORD_REVEAL`.
-- Markdown rendering shortens any single value to 300 characters. It now marks
-  the cut and appends a note saying the values are incomplete, instead of
-  returning the first 300 characters of an article body as if it were the whole
-  thing.
-
 ## [0.1.0] - 2026-08-04
 
 Initial release.
@@ -108,11 +22,12 @@ Initial release.
   matchers, expirations, activity logs, procedures, magic dash, uploads, public
   photos, users, cards lookup, API info, and the export triggers.
 - Secret-safe defaults. Hudu returns `password` and `otp_secret` as required
-  properties of every record in `GET /asset_passwords`, so one unbounded call
-  returns every stored credential and TOTP seed the key can see. Those fields
-  are stripped recursively from every tool response in `executeTool`, leaving a
-  placeholder so a model can tell that a value exists. Password metadata — name,
-  username, URL, company — remains available.
+  properties of every record in `GET /asset_passwords` — confirmed against a live
+  instance, not merely documented — so one unbounded call returns every stored
+  credential and TOTP seed the key can see. Those fields are stripped recursively
+  from every tool response in `executeTool`, leaving a placeholder so a model can
+  tell that a value exists. Password metadata — name, username, URL, company —
+  remains available.
 - Capability gating through the environment only. `HUDU_READ_ONLY`,
   `HUDU_ALLOW_DESTRUCTIVE`, `HUDU_ALLOW_PASSWORD_REVEAL` and
   `HUDU_ALLOW_EXPORTS` all default to off, and a gated tool is not registered at
@@ -121,8 +36,9 @@ Initial release.
 - Confirmation requirement on destructive operations: `confirm: true` in
   addition to the environment flag, with the impact stated in the tool
   description.
-- Honest pagination. No Hudu collection endpoint returns a total count, and
-  there is no envelope, no `X-Total-Count` and no `Link` header, so this server
+- Honest pagination. No Hudu collection endpoint returns a total count — no
+  `total`, no `X-Total-Count`, no `Link` header, and none of the thirteen
+  endpoints that wrap their array carries a count beside it — so this server
   emits neither `total` nor `has_more`. List responses report `page_was_full`,
   and the five collections that document no pagination at all report that
   instead of implying a page.
@@ -140,9 +56,54 @@ Initial release.
   and `--list-tools` to print what would be registered under the current
   environment along with what is withheld and why.
 - `docs/reference/spec-defects.md`, recording every contradiction, gap and
-  undocumented behaviour found in the captured Hudu API contract, including the
-  five collections without pagination and the rack contents that cannot be
-  listed through the documented API.
+  undocumented behaviour found in the captured Hudu API contract, and — in
+  section F — every place the live API differs from it.
+- An opt-in contract suite (`npm run test:contract`) that checks the claims in
+  that document against a running instance, and
+  `scripts/contract-recon.mjs`, a read-only walk of every documented `GET` that
+  records observed shapes. Both are `GET`-only by construction.
+
+### Verified before release
+
+This release was built against Hudu's published OpenAPI document and then
+checked against a running Hudu 2.34.2 instance and reviewed by readers who had
+not written the code. Both passes found defects. None of them ever reached a
+user, because none of this had shipped — but a package asking to be trusted with
+a credential vault should say what its own testing caught, so:
+
+**Found by contract testing against a live instance.** The published document is
+wrong about response shape. Thirteen list endpoints wrap their array and nine
+single-record endpoints wrap the record; the document records the envelope for
+only five of them. Eight get-tools were returning `{"company": {...}}` where a
+company was asked for — including `hudu_reveal_password`, whose entire purpose is
+to return one specific credential and which was returning an object containing
+one. Three Zod schemas were built from the document's prose and would have
+rejected values the API actually returns: `ip_addresses.status` comes back
+capitalised where the prose is lower-case, relations carry an `IpAddress` type
+the prose omits, and `rack_storage_items.side` returns strings where the schema
+says integer. Each is now a documented string rather than a provably wrong enum.
+`GET /companies/{id}` answers `200` with an empty body for an id that does not
+exist, so a get could succeed and return nothing that said so; get-tools now
+report `found: false` rather than a bare `null`. A key that lacks a scope
+receives `401`, not `403` — no `403` exists on the instance at all — so the `401`
+guidance names key scope alongside a bad or expired key, and an operator does not
+reissue a working one.
+
+**Found by independent review.** `response_format: "markdown"` returned real
+credential material with `HUDU_ALLOW_PASSWORD_REVEAL` unset: handlers rendered
+their Markdown from the raw record before stripping ran. The first fix scrubbed
+the rendered string for the literal secret value, and a second reviewer showed
+that was not enough — the renderer reshapes the value first, so a password
+containing a quote, a backslash or a newline appeared escaped and matched
+nothing. Markdown is now rendered by a callback invoked on the already-stripped,
+already-budgeted payload, so no unstripped value can reach a renderer. Also
+fixed: `buildPath` allowed a `..` segment to escape the API prefix, since
+`encodeURIComponent` leaves dots alone and the URL parser collapses them; the
+generic error path did not scrub the API key; upstream error bodies were never
+stripped, so a `422` echoing a submitted password carried it into the transcript;
+and `notice` text bypassed every strip.
+
+Each of these is pinned by a regression test that fails without its fix.
 
 ### Known limitations
 
@@ -157,6 +118,14 @@ Initial release.
   layout.
 - Exports can be started but not retrieved or tracked. This Hudu version
   documents no export status endpoint.
+- A rack's contents cannot be listed. Rack storage items carry no reference to
+  their rack anywhere in the documented API.
+- stdio transport only. ChatGPT and Grok connectors cannot execute a local stdio
+  server and are not supported in this release.
+- Everything above was verified against a single instance running Hudu 2.34.2.
+  A different version may differ; `hudu_get_api_info` reports yours, and
+  `npm run test:contract` will tell you whether this server's assumptions still
+  hold against it.
 
 [Unreleased]: https://github.com/ZenixSolutions/hudu-mcp/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ZenixSolutions/hudu-mcp/releases/tag/v0.1.0
